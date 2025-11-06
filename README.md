@@ -70,7 +70,13 @@ All conditions must be satisfied:
 - **Leverage**: 8x-12x (adaptive based on volatility)
 - **Margin per trade**: 10-20% of equity (adaptive)
 - **Stop loss**: 0.5% × volatility_ratio (max 5% of margin)
+- **Position size**: **Inversely proportional to volatility_ratio** (keeps dollar risk constant)
 - **Take profit**: 2.2× stop loss distance (R:R = 2.2:1)
+
+**Key Principle**: When volatility increases, the bot uses **wider stops + smaller positions** to maintain constant dollar risk:
+- High volatility (ratio > 1.5): Wider stops (e.g., 0.75%) + Smaller position (÷ 1.5)
+- Normal volatility (ratio ~1.0): Normal stops (0.5%) + Normal position
+- Low volatility (ratio < 0.9): Tighter stops (e.g., 0.45%) + Larger position (÷ 0.9)
 
 #### Exit Management
 1. **TP1 (50% close)**: When price reaches TP1
@@ -95,7 +101,9 @@ All conditions must be satisfied:
 #### Per-Trade Risk
 - Max margin per trade: 20% of equity
 - Max loss per trade: 5% of margin (~1% of equity)
-- Volatility-adjusted position sizing
+- **Constant dollar risk**: Position size scales inversely with volatility
+  - Formula: `position_size = (margin × leverage) / volatility_ratio / entry_price`
+  - This ensures: `risk_in_dollars = position_size × stop_distance` stays constant
 
 #### Global Risk Controls
 1. **Loss Streak Cooldown**

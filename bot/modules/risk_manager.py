@@ -26,6 +26,9 @@ class RiskManager:
         """
         Calculate position parameters including size, SL, and TP
 
+        IMPORTANT: Position size is inversely proportional to volatility_ratio
+        to keep dollar risk constant across different volatility regimes.
+
         Args:
             equity: Current account equity in USDC
             entry_price: Intended entry price
@@ -42,7 +45,7 @@ class RiskManager:
         # Determine leverage based on volatility
         leverage = self._get_leverage(volatility_ratio)
 
-        # Calculate stop loss percentage
+        # Calculate stop loss percentage (wider stops in high volatility)
         sl_pct = self._calculate_sl_percentage(volatility_ratio, leverage)
 
         # Calculate take profit percentage (fixed R:R ratio)
@@ -56,15 +59,60 @@ class RiskManager:
             stop_loss_price = entry_price * (1 + sl_pct)
             tp1_price = entry_price * (1 - tp_pct)
 
+        # Calculate fixed dollar risk per trade
+        risk_per_trade_usdc = margin * self.config.MAX_LOSS_PER_TRADE
+
+        # Calculate position size inversely proportional to volatility_ratio
+        # This keeps dollar risk constant: wider stops = smaller position
+        #
+        # Example with $10,000 equity, 20% margin, 10x leverage:
+        #   Base notional = $2,000 × 10 = $20,000
+        #
+        # Scenario 1: Low volatility (ratio = 0.8)
+        #   - SL = 0.5% × 0.8 = 0.4% (tighter stop)
+        #   - Adjusted notional = $20,000 / 0.8 = $25,000 (larger position)
+        #   - Risk = $25,000 × 0.4% = $100
+        #
+        # Scenario 2: Normal volatility (ratio = 1.0)
+        #   - SL = 0.5% × 1.0 = 0.5% (normal stop)
+        #   - Adjusted notional = $20,000 / 1.0 = $20,000 (normal position)
+        #   - Risk = $20,000 × 0.5% = $100
+        #
+        # Scenario 3: High volatility (ratio = 1.5)
+        #   - SL = 0.5% × 1.5 = 0.75% (wider stop)
+        #   - Adjusted notional = $20,000 / 1.5 = $13,333 (smaller position)
+        #   - Risk = $13,333 × 0.75% = $100
+        #
+        # Result: Constant $100 risk across all volatility regimes
+
+        base_notional = margin * leverage
+
+        # Adjust notional inversely to volatility_ratio
+        # When volatility is high (ratio > 1), reduce notional
+        # When volatility is low (ratio < 1), can increase notional
+        adjusted_notional = base_notional / volatility_ratio
+
         # Calculate position size
-        notional_value = margin * leverage
-        position_size = notional_value / entry_price
+        position_size = adjusted_notional / entry_price
 
-        # Calculate risk in USDC
-        risk_per_trade = margin * self.config.MAX_LOSS_PER_TRADE
+        # Recalculate actual notional with adjusted size
+        notional_value = position_size * entry_price
 
-        # Validation
+        # Validate that actual risk matches target
+        actual_risk_usdc = position_size * entry_price * sl_pct
         actual_risk_pct = sl_pct * leverage
+
+        # Log if risk calculation differs significantly from target
+        if abs(actual_risk_usdc - risk_per_trade_usdc) > (risk_per_trade_usdc * 0.1):
+            self.logger.log_risk_event(
+                event_type='RISK_CALCULATION_ADJUSTMENT',
+                severity='INFO',
+                message=f'Risk adjusted for volatility: target=${risk_per_trade_usdc:.2f}, actual=${actual_risk_usdc:.2f}',
+                target_risk=risk_per_trade_usdc,
+                actual_risk=actual_risk_usdc,
+                volatility_ratio=volatility_ratio
+            )
+
         if actual_risk_pct > self.config.MAX_LOSS_PER_TRADE:
             self.logger.log_risk_event(
                 event_type='RISK_CALCULATION_WARNING',
@@ -85,9 +133,10 @@ class RiskManager:
             'tp_pct': tp_pct,
             'stop_loss_price': stop_loss_price,
             'tp1_price': tp1_price,
-            'risk_per_trade_usdc': risk_per_trade,
-            'risk_per_trade_pct': risk_per_trade / equity,
-            'volatility_ratio': volatility_ratio
+            'risk_per_trade_usdc': risk_per_trade_usdc,
+            'risk_per_trade_pct': risk_per_trade_usdc / equity,
+            'volatility_ratio': volatility_ratio,
+            'actual_risk_usdc': actual_risk_usdc
         }
 
     def _get_margin_allocation(self, volatility_ratio: float) -> float:
