@@ -116,26 +116,34 @@ class SignalEngine:
         # 3. Institutional bias: close > VWAP
         filters['institutional_bias'] = indicators['current_close'] > indicators['vwap']
 
-        # 4. Healthy momentum (RSI): RSI > 55
+        # 4. Healthy momentum (RSI): RSI > 52
         filters['rsi_threshold'] = indicators['rsi'] > self.config.RSI_LONG_THRESHOLD
 
-        # 5. Strong relative volume
-        vol_20_check = indicators['volume_current'] > (self.config.VOL_MULTIPLIER_20 * indicators['volume_mean_20'])
-        vol_3_check = indicators['volume_current'] > (self.config.VOL_MULTIPLIER_3 * indicators['volume_mean_3'])
-        filters['volume_relative'] = vol_20_check and vol_3_check
+        # 5. Strong relative volume (simplified - only 20-period check)
+        filters['volume_relative'] = indicators['volume_current'] > (self.config.VOL_MULTIPLIER_20 * indicators['volume_mean_20'])
 
-        # 6. 5-minute structure alignment (if available)
+        # 6. 5-minute structure alignment (optional - can be bypassed with strong 1m confluence)
+        structure_5m_confirms = False
         if 'close_5m' in indicators and 'open_5m' in indicators:
-            filters['structure_5m'] = indicators['close_5m'] > indicators['open_5m']
-
+            structure_5m_confirms = indicators['close_5m'] > indicators['open_5m']
             # Optional: EMA20_5m confirmation
             if 'ema20_5m' in indicators:
-                filters['structure_5m'] = filters['structure_5m'] and (
+                structure_5m_confirms = structure_5m_confirms and (
                     indicators['close_5m'] > indicators['ema20_5m']
                 )
-        else:
-            # If no 5m data, pass this filter
-            filters['structure_5m'] = True
+
+        # Check if we have strong 1m confluence (all core filters pass)
+        core_filters = [
+            filters['trend_macro'],
+            filters['momentum_immediate'],
+            filters['institutional_bias'],
+            filters['rsi_threshold'],
+            filters['volume_relative']
+        ]
+        strong_confluence_1m = all(core_filters)
+
+        # Allow trade if either 5m confirms OR strong 1m confluence exists
+        filters['structure_5m'] = structure_5m_confirms or strong_confluence_1m
 
         # 7. Spread filter (liquidity)
         filters['spread_check'] = orderbook['spread'] <= self.config.MAX_SPREAD
@@ -147,6 +155,20 @@ class SignalEngine:
 
         # Signal is valid only if ALL filters pass
         signal_valid = all(filters.values())
+
+        # Debug logging for rejected signals
+        if not signal_valid and self.logger:
+            failed_filters = [k for k, v in filters.items() if not v]
+            rejection_details = {
+                'rsi': indicators['rsi'],
+                'volume_ratio_20': indicators['volume_current'] / indicators['volume_mean_20'] if indicators['volume_mean_20'] > 0 else 0,
+                'spread': orderbook['spread'],
+                'failed_filters': failed_filters
+            }
+            self.logger.log_system_event(
+                f"LONG signal rejected for analysis",
+                **rejection_details
+            )
 
         return signal_valid, confidence, filters
 
@@ -173,26 +195,34 @@ class SignalEngine:
         # 3. Institutional bias: close < VWAP
         filters['institutional_bias'] = indicators['current_close'] < indicators['vwap']
 
-        # 4. Healthy momentum (RSI): RSI < 45
+        # 4. Healthy momentum (RSI): RSI < 48
         filters['rsi_threshold'] = indicators['rsi'] < self.config.RSI_SHORT_THRESHOLD
 
-        # 5. Strong relative volume
-        vol_20_check = indicators['volume_current'] > (self.config.VOL_MULTIPLIER_20 * indicators['volume_mean_20'])
-        vol_3_check = indicators['volume_current'] > (self.config.VOL_MULTIPLIER_3 * indicators['volume_mean_3'])
-        filters['volume_relative'] = vol_20_check and vol_3_check
+        # 5. Strong relative volume (simplified - only 20-period check)
+        filters['volume_relative'] = indicators['volume_current'] > (self.config.VOL_MULTIPLIER_20 * indicators['volume_mean_20'])
 
-        # 6. 5-minute structure alignment (if available)
+        # 6. 5-minute structure alignment (optional - can be bypassed with strong 1m confluence)
+        structure_5m_confirms = False
         if 'close_5m' in indicators and 'open_5m' in indicators:
-            filters['structure_5m'] = indicators['close_5m'] < indicators['open_5m']
-
+            structure_5m_confirms = indicators['close_5m'] < indicators['open_5m']
             # Optional: EMA20_5m confirmation
             if 'ema20_5m' in indicators:
-                filters['structure_5m'] = filters['structure_5m'] and (
+                structure_5m_confirms = structure_5m_confirms and (
                     indicators['close_5m'] < indicators['ema20_5m']
                 )
-        else:
-            # If no 5m data, pass this filter
-            filters['structure_5m'] = True
+
+        # Check if we have strong 1m confluence (all core filters pass)
+        core_filters = [
+            filters['trend_macro'],
+            filters['momentum_immediate'],
+            filters['institutional_bias'],
+            filters['rsi_threshold'],
+            filters['volume_relative']
+        ]
+        strong_confluence_1m = all(core_filters)
+
+        # Allow trade if either 5m confirms OR strong 1m confluence exists
+        filters['structure_5m'] = structure_5m_confirms or strong_confluence_1m
 
         # 7. Spread filter (liquidity)
         filters['spread_check'] = orderbook['spread'] <= self.config.MAX_SPREAD
@@ -204,6 +234,20 @@ class SignalEngine:
 
         # Signal is valid only if ALL filters pass
         signal_valid = all(filters.values())
+
+        # Debug logging for rejected signals
+        if not signal_valid and self.logger:
+            failed_filters = [k for k, v in filters.items() if not v]
+            rejection_details = {
+                'rsi': indicators['rsi'],
+                'volume_ratio_20': indicators['volume_current'] / indicators['volume_mean_20'] if indicators['volume_mean_20'] > 0 else 0,
+                'spread': orderbook['spread'],
+                'failed_filters': failed_filters
+            }
+            self.logger.log_system_event(
+                f"SHORT signal rejected for analysis",
+                **rejection_details
+            )
 
         return signal_valid, confidence, filters
 
