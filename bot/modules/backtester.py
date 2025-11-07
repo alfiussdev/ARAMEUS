@@ -15,6 +15,7 @@ from bot.modules.signal_engine import SignalEngine, SignalType
 from bot.modules.risk_manager import RiskManager
 from bot.modules.risk_controls import RiskControls
 from bot.modules.performance_metrics import PerformanceMetrics
+from bot.modules.mock_logger import MockLogger
 
 
 class Backtester:
@@ -32,11 +33,14 @@ class Backtester:
         self.initial_equity = initial_equity
         self.current_equity = initial_equity
 
-        # Initialize modules (without logger for backtest)
+        # Initialize mock logger for backtest (silent)
+        mock_logger = MockLogger()
+
+        # Initialize modules with mock logger
         self.indicator_engine = IndicatorEngine(config)
-        self.signal_engine = SignalEngine(config, None)
-        self.risk_manager = RiskManager(config, None)
-        self.risk_controls = RiskControls(config, None)
+        self.signal_engine = SignalEngine(config, mock_logger)
+        self.risk_manager = RiskManager(config, mock_logger)
+        self.risk_controls = RiskControls(config, mock_logger)
 
         # State tracking
         self.positions: Dict[str, Dict] = {}

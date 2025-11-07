@@ -260,16 +260,16 @@ class HistoricalDataLoader:
         df = df.copy()
         df = df.set_index('timestamp')
 
-        # Resample rules
+        # Resample rules (using 'min' instead of deprecated 'T')
         resample_map = {
-            '5m': '5T',
-            '15m': '15T',
+            '5m': '5min',
+            '15m': '15min',
             '1h': '1H',
             '4h': '4H',
             '1d': '1D'
         }
 
-        rule = resample_map.get(target_timeframe, '5T')
+        rule = resample_map.get(target_timeframe, '5min')
 
         resampled = df.resample(rule).agg({
             'open': 'first',
