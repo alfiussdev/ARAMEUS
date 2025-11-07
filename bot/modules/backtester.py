@@ -40,7 +40,7 @@ class Backtester:
         self.indicator_engine = IndicatorEngine(config)
         self.signal_engine = SignalEngine(config, mock_logger)
         self.risk_manager = RiskManager(config, mock_logger)
-        self.risk_controls = RiskControls(config, mock_logger)
+        self.risk_controls = RiskControls(config, mock_logger, backtest_mode=True)
 
         # State tracking
         self.positions: Dict[str, Dict] = {}

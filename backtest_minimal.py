@@ -8,7 +8,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 from bot.config import Config
-from bot.modules.data_loader import DataLoader
+from bot.modules.data_loader import HistoricalDataLoader
 from bot.modules.indicators import IndicatorEngine
 from bot.modules.mock_logger import MockLogger
 
@@ -31,7 +31,7 @@ def run_minimal_backtest(pair: str, days: int = 30):
 
     # Load data
     print(f"Loading {days} days of data for {pair}...")
-    data_loader = DataLoader()
+    data_loader = HistoricalDataLoader()
 
     # Calculate start date
     end_date = datetime.now()

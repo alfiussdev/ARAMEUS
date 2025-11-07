@@ -13,16 +13,18 @@ from pathlib import Path
 class RiskControls:
     """Global risk control system"""
 
-    def __init__(self, config, logger):
+    def __init__(self, config, logger, backtest_mode: bool = False):
         """
         Initialize risk controls
 
         Args:
             config: Configuration object
             logger: Logger instance
+            backtest_mode: If True, don't load/save persistent state (for backtesting)
         """
         self.config = config
         self.logger = logger
+        self.backtest_mode = backtest_mode
 
         # Risk state tracking
         self.loss_streak = 0
@@ -40,8 +42,9 @@ class RiskControls:
         self.state_file = Path('data/risk_state.json')
         self.state_file.parent.mkdir(exist_ok=True)
 
-        # Load previous state if exists
-        self._load_state()
+        # Load previous state if exists (NOT in backtest mode)
+        if not self.backtest_mode:
+            self._load_state()
 
     def can_trade(self, current_equity: float) -> Tuple[bool, str]:
         """
@@ -304,7 +307,10 @@ class RiskControls:
         }
 
     def _save_state(self):
-        """Save risk control state to file"""
+        """Save risk control state to file (skipped in backtest mode)"""
+        if self.backtest_mode:
+            return  # Don't persist state in backtest mode
+
         try:
             state = {
                 'loss_streak': self.loss_streak,

@@ -342,7 +342,9 @@ class PerformanceMetrics:
                 'final_equity': self.initial_equity,
                 'total_pnl': 0,
                 'total_return_pct': 0,
-                'total_trades': 0
+                'total_trades': 0,
+                'total_fees': 0,
+                'net_profit': 0
             },
             'returns': {},
             'risk': {},
