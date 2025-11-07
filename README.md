@@ -223,6 +223,61 @@ GLOBAL_DRAWDOWN_LIMIT=0.25
 
 ---
 
+## 📊 Backtesting (Test Without Risk!)
+
+Before risking real capital, **backtest your strategy** on historical data:
+
+```bash
+# Generate sample data and run backtest
+python backtest.py --generate-data --pair HYPE/USDC --days 30
+```
+
+This will:
+- Generate 30 days of market data
+- Run the complete trading strategy
+- Show detailed performance metrics
+- **No wallet or API keys required!**
+
+### Quick Backtest Commands
+
+```bash
+# Download real data from Hyperliquid
+python backtest.py --download-data --pair HYPE/USDC --days 60
+
+# Run backtest with custom parameters
+python backtest.py --pair HYPE/USDC --equity 50000 --leverage 8
+
+# Save detailed report
+python backtest.py --pair HYPE/USDC --save-report --save-trades
+
+# List available data
+python download_data.py --list
+```
+
+### What You'll See
+
+```
+📊 OVERVIEW
+  Initial Equity:    $10,000.00
+  Final Equity:      $12,450.00
+  Total Return:      24.50%
+  Total Trades:      45
+
+📈 RETURNS
+  Sharpe Ratio:      1.85
+  Sortino Ratio:     2.31
+  Max Drawdown:      -8.50%
+
+🎯 TRADE ANALYSIS
+  Win Rate:          62.22%
+  Profit Factor:     2.15
+  Avg R-Multiple:    1.85R
+```
+
+**📖 For complete backtesting guide, see [BACKTESTING.md](BACKTESTING.md)**
+
+---
+
 ## 💻 Usage
 
 ### Dry Run Mode (Recommended for testing)
