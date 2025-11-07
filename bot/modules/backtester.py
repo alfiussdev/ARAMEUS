@@ -67,6 +67,7 @@ class Backtester:
         """
         print(f"\n{'='*70}")
         print(f"  BACKTESTING {pair}")
+        print(f"  StrategyEngine: AggressiveCompoundBot v1.2 loaded for {pair} backtest")
         print(f"  Period: {data_1m['timestamp'].min()} to {data_1m['timestamp'].max()}")
         print(f"  Candles: {len(data_1m)}")
         print(f"  Initial Equity: ${self.initial_equity:,.2f}")
@@ -94,6 +95,10 @@ class Backtester:
 
         print(f"Starting backtest simulation...\n")
 
+        # Candle counter for debug logging (first 5000 candles after warmup)
+        candles_processed = 0
+        debug_limit = 5000
+
         # Main backtest loop
         for i in range(warmup_candles, len(data_1m)):
             candle = self._row_to_candle(data_1m.iloc[i])
@@ -112,12 +117,17 @@ class Backtester:
             current_price = candle['close']
             current_time = candle['timestamp']
 
+            # Increment candle counter
+            candles_processed += 1
+            enable_debug = candles_processed <= debug_limit
+
             # Check if we have an open position
             if pair in self.positions:
                 self._manage_position(pair, current_price, current_time, indicators)
             else:
                 # Look for entry signals
-                self._look_for_entry(pair, current_price, current_time, indicators)
+                self._look_for_entry(pair, current_price, current_time, indicators,
+                                   enable_debug=enable_debug, candle_num=candles_processed)
 
             # Update equity curve
             unrealized_pnl = self._calculate_unrealized_pnl(current_price)
@@ -153,12 +163,20 @@ class Backtester:
         }
 
     def _look_for_entry(self, pair: str, current_price: float,
-                       current_time: datetime, indicators: Dict):
+                       current_time: datetime, indicators: Dict,
+                       enable_debug: bool = False, candle_num: int = 0):
         """Look for entry signals"""
 
         # Check if trading is allowed
         can_trade, reason = self.risk_controls.can_trade(self.current_equity)
+
+        if enable_debug:
+            risk_ok = can_trade
+            risk_reason = reason if not can_trade else "OK"
+
         if not can_trade:
+            if enable_debug:
+                print(f"[{candle_num}] {current_time} | NO_TRADE | risk_limits_ok=False ({risk_reason})")
             return
 
         # Simulate orderbook (spread check)
@@ -169,9 +187,10 @@ class Backtester:
             'spread': 0.001  # 0.1% simulated spread
         }
 
-        # Evaluate signal
+        # Evaluate signal with debug mode
         signal, confidence, filters = self.signal_engine.evaluate_signal(
-            pair, indicators, orderbook
+            pair, indicators, orderbook, enable_debug=enable_debug,
+            candle_num=candle_num, timestamp=current_time
         )
 
         if signal != SignalType.NO_TRADE:
@@ -184,7 +203,7 @@ class Backtester:
             )
 
             # Validate position size
-            is_valid, _ = self.risk_manager.validate_position_size(
+            is_valid, validation_reason = self.risk_manager.validate_position_size(
                 position_size=position_params['position_size'],
                 entry_price=current_price,
                 equity=self.current_equity,
@@ -194,6 +213,14 @@ class Backtester:
             if is_valid:
                 self._open_position(pair, signal.value, current_price,
                                   current_time, position_params, indicators)
+                if enable_debug:
+                    print(f"[{candle_num}] {current_time} | POSITION OPENED: {signal.value} | "
+                          f"size={position_params['position_size']:.4f} | price={current_price:.4f}")
+            else:
+                # Log when signal is rejected by RiskManager
+                print(f"[{candle_num}] {current_time} | SIGNAL REJECTED BY RISK_MANAGER | "
+                      f"signal={signal.value} | reason={validation_reason} | "
+                      f"proposed_size={position_params['position_size']:.4f}")
 
     def _open_position(self, pair: str, side: str, entry_price: float,
                       entry_time: datetime, position_params: Dict, indicators: Dict):

@@ -29,7 +29,8 @@ class SignalEngine:
         self.logger = logger
 
     def evaluate_signal(self, pair: str, indicators: Dict[str, Any],
-                       orderbook: Dict[str, Any]) -> Tuple[SignalType, float, Dict[str, bool]]:
+                       orderbook: Dict[str, Any], enable_debug: bool = False,
+                       candle_num: int = 0, timestamp = None) -> Tuple[SignalType, float, Dict[str, bool]]:
         """
         Evaluate trading signal based on indicators and filters
 
@@ -37,6 +38,9 @@ class SignalEngine:
             pair: Trading pair
             indicators: Dictionary of indicator values
             orderbook: Orderbook data with spread information
+            enable_debug: Enable detailed debug logging
+            candle_num: Candle number for debug logging
+            timestamp: Timestamp for debug logging
 
         Returns:
             Tuple of (signal_type, confidence, filters_passed)
@@ -60,12 +64,12 @@ class SignalEngine:
 
         # Evaluate LONG conditions
         long_signal, long_confidence, long_filters = self._evaluate_long_signal(
-            indicators, orderbook
+            indicators, orderbook, enable_debug, candle_num, timestamp
         )
 
         # Evaluate SHORT conditions
         short_signal, short_confidence, short_filters = self._evaluate_short_signal(
-            indicators, orderbook
+            indicators, orderbook, enable_debug, candle_num, timestamp
         )
 
         # Determine final signal
@@ -94,13 +98,17 @@ class SignalEngine:
         return signal, confidence, filters
 
     def _evaluate_long_signal(self, indicators: Dict[str, Any],
-                              orderbook: Dict[str, Any]) -> Tuple[bool, float, Dict[str, bool]]:
+                              orderbook: Dict[str, Any], enable_debug: bool = False,
+                              candle_num: int = 0, timestamp = None) -> Tuple[bool, float, Dict[str, bool]]:
         """
         Evaluate LONG signal conditions
 
         Args:
             indicators: Dictionary of indicator values
             orderbook: Orderbook data
+            enable_debug: Enable detailed debug logging
+            candle_num: Candle number for logging
+            timestamp: Timestamp for logging
 
         Returns:
             Tuple of (signal_valid, confidence, filters_passed)
@@ -108,19 +116,20 @@ class SignalEngine:
         filters = {}
 
         # 1. Trend macro: SMA50 > SMA200
-        filters['trend_macro'] = indicators['sma50'] > indicators['sma200']
+        filters['trend_ok'] = indicators['sma50'] > indicators['sma200']
 
         # 2. Momentum immediate: EMA9 > EMA20
-        filters['momentum_immediate'] = indicators['ema9'] > indicators['ema20']
+        filters['momentum_ok'] = indicators['ema9'] > indicators['ema20']
 
         # 3. Institutional bias: close > VWAP
-        filters['institutional_bias'] = indicators['current_close'] > indicators['vwap']
+        filters['vwap_ok'] = indicators['current_close'] > indicators['vwap']
 
         # 4. Healthy momentum (RSI): RSI > 52
-        filters['rsi_threshold'] = indicators['rsi'] > self.config.RSI_LONG_THRESHOLD
+        filters['rsi_ok'] = indicators['rsi'] > self.config.RSI_LONG_THRESHOLD
 
         # 5. Strong relative volume (simplified - only 20-period check)
-        filters['volume_relative'] = indicators['volume_current'] > (self.config.VOL_MULTIPLIER_20 * indicators['volume_mean_20'])
+        vol_ratio_20 = indicators['volume_current'] / indicators['volume_mean_20'] if indicators['volume_mean_20'] > 0 else 0
+        filters['volume_ok'] = indicators['volume_current'] > (self.config.VOL_MULTIPLIER_20 * indicators['volume_mean_20'])
 
         # 6. 5-minute structure alignment (optional - can be bypassed with strong 1m confluence)
         structure_5m_confirms = False
@@ -134,19 +143,19 @@ class SignalEngine:
 
         # Check if we have strong 1m confluence (all core filters pass)
         core_filters = [
-            filters['trend_macro'],
-            filters['momentum_immediate'],
-            filters['institutional_bias'],
-            filters['rsi_threshold'],
-            filters['volume_relative']
+            filters['trend_ok'],
+            filters['momentum_ok'],
+            filters['vwap_ok'],
+            filters['rsi_ok'],
+            filters['volume_ok']
         ]
         strong_confluence_1m = all(core_filters)
 
         # Allow trade if either 5m confirms OR strong 1m confluence exists
-        filters['structure_5m'] = structure_5m_confirms or strong_confluence_1m
+        filters['context_5m_ok'] = structure_5m_confirms or strong_confluence_1m
 
         # 7. Spread filter (liquidity)
-        filters['spread_check'] = orderbook['spread'] <= self.config.MAX_SPREAD
+        filters['spread_ok'] = orderbook['spread'] <= self.config.MAX_SPREAD
 
         # Calculate confidence based on how many filters passed
         filters_passed = sum(filters.values())
@@ -156,12 +165,22 @@ class SignalEngine:
         # Signal is valid only if ALL filters pass
         signal_valid = all(filters.values())
 
-        # Debug logging for rejected signals
-        if not signal_valid and self.logger:
+        # Debug logging
+        if enable_debug:
+            decision = "should_enter_long" if signal_valid else "no_trade"
+            print(f"[{candle_num}] {timestamp} | {decision} | "
+                  f"trend_ok={filters['trend_ok']} | momentum_ok={filters['momentum_ok']} | "
+                  f"vwap_ok={filters['vwap_ok']} | rsi_ok={filters['rsi_ok']} (RSI={indicators['rsi']:.1f}) | "
+                  f"volume_ok={filters['volume_ok']} (ratio={vol_ratio_20:.2f}) | "
+                  f"context_5m_ok={filters['context_5m_ok']} | spread_ok={filters['spread_ok']} (spread={orderbook['spread']:.4f}) | "
+                  f"risk_limits_ok=True")
+
+        # Also log to logger for rejected signals (non-debug mode)
+        if not signal_valid and self.logger and not enable_debug:
             failed_filters = [k for k, v in filters.items() if not v]
             rejection_details = {
                 'rsi': indicators['rsi'],
-                'volume_ratio_20': indicators['volume_current'] / indicators['volume_mean_20'] if indicators['volume_mean_20'] > 0 else 0,
+                'volume_ratio_20': vol_ratio_20,
                 'spread': orderbook['spread'],
                 'failed_filters': failed_filters
             }
@@ -173,13 +192,17 @@ class SignalEngine:
         return signal_valid, confidence, filters
 
     def _evaluate_short_signal(self, indicators: Dict[str, Any],
-                               orderbook: Dict[str, Any]) -> Tuple[bool, float, Dict[str, bool]]:
+                               orderbook: Dict[str, Any], enable_debug: bool = False,
+                               candle_num: int = 0, timestamp = None) -> Tuple[bool, float, Dict[str, bool]]:
         """
         Evaluate SHORT signal conditions
 
         Args:
             indicators: Dictionary of indicator values
             orderbook: Orderbook data
+            enable_debug: Enable detailed debug logging
+            candle_num: Candle number for logging
+            timestamp: Timestamp for logging
 
         Returns:
             Tuple of (signal_valid, confidence, filters_passed)
@@ -187,19 +210,20 @@ class SignalEngine:
         filters = {}
 
         # 1. Trend macro: SMA50 < SMA200
-        filters['trend_macro'] = indicators['sma50'] < indicators['sma200']
+        filters['trend_ok'] = indicators['sma50'] < indicators['sma200']
 
         # 2. Momentum immediate: EMA9 < EMA20
-        filters['momentum_immediate'] = indicators['ema9'] < indicators['ema20']
+        filters['momentum_ok'] = indicators['ema9'] < indicators['ema20']
 
         # 3. Institutional bias: close < VWAP
-        filters['institutional_bias'] = indicators['current_close'] < indicators['vwap']
+        filters['vwap_ok'] = indicators['current_close'] < indicators['vwap']
 
         # 4. Healthy momentum (RSI): RSI < 48
-        filters['rsi_threshold'] = indicators['rsi'] < self.config.RSI_SHORT_THRESHOLD
+        filters['rsi_ok'] = indicators['rsi'] < self.config.RSI_SHORT_THRESHOLD
 
         # 5. Strong relative volume (simplified - only 20-period check)
-        filters['volume_relative'] = indicators['volume_current'] > (self.config.VOL_MULTIPLIER_20 * indicators['volume_mean_20'])
+        vol_ratio_20 = indicators['volume_current'] / indicators['volume_mean_20'] if indicators['volume_mean_20'] > 0 else 0
+        filters['volume_ok'] = indicators['volume_current'] > (self.config.VOL_MULTIPLIER_20 * indicators['volume_mean_20'])
 
         # 6. 5-minute structure alignment (optional - can be bypassed with strong 1m confluence)
         structure_5m_confirms = False
@@ -213,19 +237,19 @@ class SignalEngine:
 
         # Check if we have strong 1m confluence (all core filters pass)
         core_filters = [
-            filters['trend_macro'],
-            filters['momentum_immediate'],
-            filters['institutional_bias'],
-            filters['rsi_threshold'],
-            filters['volume_relative']
+            filters['trend_ok'],
+            filters['momentum_ok'],
+            filters['vwap_ok'],
+            filters['rsi_ok'],
+            filters['volume_ok']
         ]
         strong_confluence_1m = all(core_filters)
 
         # Allow trade if either 5m confirms OR strong 1m confluence exists
-        filters['structure_5m'] = structure_5m_confirms or strong_confluence_1m
+        filters['context_5m_ok'] = structure_5m_confirms or strong_confluence_1m
 
         # 7. Spread filter (liquidity)
-        filters['spread_check'] = orderbook['spread'] <= self.config.MAX_SPREAD
+        filters['spread_ok'] = orderbook['spread'] <= self.config.MAX_SPREAD
 
         # Calculate confidence based on how many filters passed
         filters_passed = sum(filters.values())
@@ -235,12 +259,22 @@ class SignalEngine:
         # Signal is valid only if ALL filters pass
         signal_valid = all(filters.values())
 
-        # Debug logging for rejected signals
-        if not signal_valid and self.logger:
+        # Debug logging
+        if enable_debug:
+            decision = "should_enter_short" if signal_valid else "no_trade"
+            print(f"[{candle_num}] {timestamp} | {decision} | "
+                  f"trend_ok={filters['trend_ok']} | momentum_ok={filters['momentum_ok']} | "
+                  f"vwap_ok={filters['vwap_ok']} | rsi_ok={filters['rsi_ok']} (RSI={indicators['rsi']:.1f}) | "
+                  f"volume_ok={filters['volume_ok']} (ratio={vol_ratio_20:.2f}) | "
+                  f"context_5m_ok={filters['context_5m_ok']} | spread_ok={filters['spread_ok']} (spread={orderbook['spread']:.4f}) | "
+                  f"risk_limits_ok=True")
+
+        # Also log to logger for rejected signals (non-debug mode)
+        if not signal_valid and self.logger and not enable_debug:
             failed_filters = [k for k, v in filters.items() if not v]
             rejection_details = {
                 'rsi': indicators['rsi'],
-                'volume_ratio_20': indicators['volume_current'] / indicators['volume_mean_20'] if indicators['volume_mean_20'] > 0 else 0,
+                'volume_ratio_20': vol_ratio_20,
                 'spread': orderbook['spread'],
                 'failed_filters': failed_filters
             }
