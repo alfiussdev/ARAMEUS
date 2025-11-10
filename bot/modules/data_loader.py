@@ -365,13 +365,19 @@ class HistoricalDataLoader:
 
         # Map pair format (HYPE/USDC → HYPE/USDT for Binance)
         binance_pair = pair.replace('USDC', 'USDT')
-        print(f"   Using Binance pair: {binance_pair}")
+
+        # Determine if we need futures or spot market
+        # HYPE is only on Binance Futures, not spot
+        use_futures = 'HYPE' in pair.upper()
+        market_type = 'future' if use_futures else 'spot'
+
+        print(f"   Using Binance {market_type.upper()}: {binance_pair}")
 
         # Initialize Binance exchange
         exchange = ccxt.binance({
             'enableRateLimit': True,  # Respect rate limits
             'options': {
-                'defaultType': 'spot',  # Use spot market
+                'defaultType': market_type,  # 'spot' or 'future'
             }
         })
 
