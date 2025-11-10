@@ -24,6 +24,56 @@ class HistoricalDataLoader:
         """
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self._spot_cache = {}  # Cache for spot pair indices
+
+    def _get_spot_index(self, token: str) -> Optional[str]:
+        """
+        Get the spot pair index for a token from Hyperliquid spotMeta
+
+        Args:
+            token: Token symbol (e.g., 'ZEC', 'HYPE')
+
+        Returns:
+            Spot pair index (e.g., '@107') or None if not found
+        """
+        # Check cache first
+        if token in self._spot_cache:
+            return self._spot_cache[token]
+
+        try:
+            url = "https://api.hyperliquid.xyz/info"
+            payload = {'type': 'spotMeta'}
+            response = requests.post(url, json=payload, timeout=10)
+            response.raise_for_status()
+            meta = response.json()
+
+            # Find token in universe
+            tokens = meta.get('tokens', [])
+            universe = meta.get('universe', [])
+
+            # Find token index
+            token_index = None
+            for idx, t in enumerate(tokens):
+                if t.get('name', '').upper() == token.upper():
+                    token_index = t.get('index')
+                    break
+
+            if token_index is None:
+                return None
+
+            # Find spot pair index that has this token paired with USDC (index 0)
+            for spot_idx, pair in enumerate(universe):
+                if pair.get('tokens') == [token_index, 0]:
+                    spot_format = f"@{spot_idx}"
+                    self._spot_cache[token] = spot_format
+                    print(f"  Found {token} spot index: {spot_format}")
+                    return spot_format
+
+            return None
+
+        except Exception as e:
+            print(f"  Warning: Could not fetch spot metadata: {e}")
+            return None
 
     def load_from_csv(self, pair: str, timeframe: str = '1m') -> pd.DataFrame:
         """
@@ -100,7 +150,7 @@ class HistoricalDataLoader:
             'AVAX/USDC': 'AVAX',
         }
 
-        # Try spot first, then perp, then extract from pair name
+        # Try spot first, then perp, then query API for spot index
         if pair in spot_pair_map:
             symbol = spot_pair_map[pair]
             print(f"  Using spot pair format: {symbol}")
@@ -108,9 +158,17 @@ class HistoricalDataLoader:
             symbol = perp_pairs[pair]
             print(f"  Using perpetual format: {symbol}")
         else:
-            # Fallback: try extracting base currency
-            symbol = pair.replace('/', '-').split('-')[0]
-            print(f"  Using fallback format: {symbol} (this might fail for spot pairs)")
+            # Try to get spot index from API
+            base_token = pair.replace('/', '-').split('-')[0]
+            spot_index = self._get_spot_index(base_token)
+
+            if spot_index:
+                symbol = spot_index
+                print(f"  Using spot pair format: {symbol}")
+            else:
+                # Final fallback: try base currency name (for perpetuals)
+                symbol = base_token
+                print(f"  Using fallback format: {symbol} (might be perpetual or fail)")
 
         # Calculate time range
         end_time = datetime.now()
