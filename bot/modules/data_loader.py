@@ -74,16 +74,43 @@ class HistoricalDataLoader:
 
         # Convert timeframe to Hyperliquid format
         interval_map = {
-            '1m': '1',
-            '5m': '5',
-            '15m': '15',
-            '1h': '60',
-            '4h': '240',
-            '1d': '1D'
+            '1m': '1m',
+            '5m': '5m',
+            '15m': '15m',
+            '1h': '1h',
+            '4h': '4h',
+            '1d': '1d'
         }
 
-        hl_interval = interval_map.get(timeframe, '1')
-        symbol = pair.replace('/', '-').split('-')[0]  # HYPE from HYPE/USDC
+        hl_interval = interval_map.get(timeframe, '1m')
+
+        # Map trading pairs to Hyperliquid coin format
+        # For spot pairs, Hyperliquid uses @{index} format
+        # For perpetuals, use coin name directly (e.g., "BTC", "ETH")
+        spot_pair_map = {
+            'HYPE/USDC': '@107',   # HYPE spot pair index on Hyperliquid mainnet
+            'PURR/USDC': 'PURR',   # PURR uses special format
+        }
+
+        # Perpetuals (use coin name directly)
+        perp_pairs = {
+            'BTC/USDC': 'BTC',
+            'ETH/USDC': 'ETH',
+            'SOL/USDC': 'SOL',
+            'AVAX/USDC': 'AVAX',
+        }
+
+        # Try spot first, then perp, then extract from pair name
+        if pair in spot_pair_map:
+            symbol = spot_pair_map[pair]
+            print(f"  Using spot pair format: {symbol}")
+        elif pair in perp_pairs:
+            symbol = perp_pairs[pair]
+            print(f"  Using perpetual format: {symbol}")
+        else:
+            # Fallback: try extracting base currency
+            symbol = pair.replace('/', '-').split('-')[0]
+            print(f"  Using fallback format: {symbol} (this might fail for spot pairs)")
 
         # Calculate time range
         end_time = datetime.now()
