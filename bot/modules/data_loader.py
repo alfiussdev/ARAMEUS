@@ -174,23 +174,34 @@ class HistoricalDataLoader:
         end_time = datetime.now()
         start_time = end_time - timedelta(days=days_back)
 
+        # Calculate how many candles we need
+        interval_minutes = {'1m': 1, '5m': 5, '15m': 15, '1h': 60, '4h': 240, '1d': 1440}
+        minutes = interval_minutes.get(timeframe, 1)
+        target_candles = int((days_back * 24 * 60) / minutes)
+
+        print(f"  Target: {target_candles} candles for {days_back} days")
+
         # Hyperliquid API endpoint
         url = "https://api.hyperliquid.xyz/info"
 
         all_candles = []
-        current_start = start_time
+        current_end = end_time
+        max_requests = 20  # Safety limit to prevent infinite loops
 
-        # Fetch data in chunks (max 5000 candles per request)
-        # Hyperliquid API only keeps ~5000 recent candles
-        consecutive_small_fetches = 0
-        while current_start < end_time:
+        # Fetch data in chunks, working backwards from present
+        # Each request gets up to 5000 candles
+        for request_num in range(max_requests):
+            # Calculate chunk start time (go back enough to get ~5000 candles)
+            chunk_duration = timedelta(minutes=5000 * minutes)
+            chunk_start = max(current_end - chunk_duration, start_time)
+
             payload = {
                 'type': 'candleSnapshot',
                 'req': {
                     'coin': symbol,
                     'interval': hl_interval,
-                    'startTime': int(current_start.timestamp() * 1000),
-                    'endTime': int(end_time.timestamp() * 1000)
+                    'startTime': int(chunk_start.timestamp() * 1000),
+                    'endTime': int(current_end.timestamp() * 1000)
                 }
             }
 
@@ -200,29 +211,33 @@ class HistoricalDataLoader:
                 candles = response.json()
 
                 if not candles:
+                    print(f"  No more data available")
                     break
 
-                # If we're only getting 1-5 candles repeatedly, we've reached the API limit
-                if len(candles) <= 5:
-                    consecutive_small_fetches += 1
-                    if consecutive_small_fetches >= 3:
-                        print(f"  Reached Hyperliquid API data limit (~5000 candles)")
-                        break
-                else:
-                    consecutive_small_fetches = 0
-
-                all_candles.extend(candles)
-
-                # Move to next chunk
-                last_timestamp = candles[-1]['t']
-                current_start = datetime.fromtimestamp(last_timestamp / 1000)
+                # Add candles to our collection (they come in chronological order)
+                all_candles = candles + all_candles  # Prepend to keep chronological order
 
                 print(f"  Fetched {len(candles)} candles (total: {len(all_candles)})")
+
+                # Check if we have enough data
+                if len(all_candles) >= target_candles:
+                    print(f"  ✓ Reached target of {target_candles} candles")
+                    break
+
+                # Check if we've reached the start time
+                if chunk_start <= start_time:
+                    print(f"  ✓ Reached requested time range")
+                    break
+
+                # Move the window backwards for next request
+                # Use the oldest timestamp from this batch
+                oldest_timestamp = candles[0]['t']
+                current_end = datetime.fromtimestamp(oldest_timestamp / 1000)
 
                 time.sleep(0.5)  # Rate limiting
 
             except Exception as e:
-                print(f"Error fetching data: {e}")
+                print(f"  Error fetching data: {e}")
                 break
 
         if not all_candles:
