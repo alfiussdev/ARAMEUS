@@ -25,8 +25,14 @@ Examples:
   # Generate sample data and run backtest
   python backtest.py --generate-data --pair HYPE/USDC --days 30
 
-  # Download real data from Hyperliquid and backtest
+  # Download 30 days from Binance (default, unlimited history)
   python backtest.py --download-data --pair HYPE/USDC --days 30
+
+  # Download from Binance explicitly
+  python backtest.py --download-data --source binance --pair HYPE/USDC --days 30
+
+  # Download from Hyperliquid (~3.5 days max for 1m)
+  python backtest.py --download-data --source hyperliquid --pair HYPE/USDC --days 30
 
   # Run backtest on existing CSV data
   python backtest.py --pair HYPE/USDC
@@ -45,7 +51,9 @@ Examples:
     parser.add_argument('--generate-data', action='store_true',
                        help='Generate synthetic data before backtest')
     parser.add_argument('--download-data', action='store_true',
-                       help='Download real data from Hyperliquid')
+                       help='Download real data from exchange')
+    parser.add_argument('--source', type=str, default='binance', choices=['hyperliquid', 'binance'],
+                       help='Data source: binance (default, unlimited history) or hyperliquid (~3.5 days)')
     parser.add_argument('--days', type=int, default=30,
                        help='Days of historical data (default: 30)')
 
@@ -106,21 +114,39 @@ Examples:
         data_5m.to_csv(f"data/historical/{pair_clean}_5m.csv", index=False)
 
     elif args.download_data:
-        print(f"\n📥 Downloading data for {args.pair}...")
+        source_name = args.source.capitalize()
+        print(f"\n📥 Downloading data from {source_name} for {args.pair}...")
         try:
-            data_1m = data_loader.download_historical_data(
-                pair=args.pair,
-                timeframe='1m',
-                days_back=args.days,
-                save=True
-            )
-            # Download 5m data
-            data_5m = data_loader.download_historical_data(
-                pair=args.pair,
-                timeframe='5m',
-                days_back=args.days,
-                save=True
-            )
+            if args.source == 'binance':
+                # Download from Binance (unlimited history)
+                data_1m = data_loader.download_from_binance(
+                    pair=args.pair,
+                    timeframe='1m',
+                    days_back=args.days,
+                    save=True
+                )
+                # Download 5m data
+                data_5m = data_loader.download_from_binance(
+                    pair=args.pair,
+                    timeframe='5m',
+                    days_back=args.days,
+                    save=True
+                )
+            else:  # hyperliquid
+                # Download from Hyperliquid (~5000 candles limit)
+                data_1m = data_loader.download_historical_data(
+                    pair=args.pair,
+                    timeframe='1m',
+                    days_back=args.days,
+                    save=True
+                )
+                # Download 5m data
+                data_5m = data_loader.download_historical_data(
+                    pair=args.pair,
+                    timeframe='5m',
+                    days_back=args.days,
+                    save=True
+                )
         except Exception as e:
             print(f"\n❌ Error downloading data: {e}")
             print("Try using --generate-data for synthetic data instead.\n")

@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import requests
 import time
+import ccxt
 
 
 class HistoricalDataLoader:
@@ -326,6 +327,158 @@ class HistoricalDataLoader:
                                 print(f"      Gap: {gap_start} to {gap_end} ({gap_duration})")
                             if len(large_gaps) > 3:
                                 print(f"      ... and {len(large_gaps) - 3} more gaps")
+
+                    # Calculate total coverage
+                    total_duration = combined_df['timestamp'].max() - combined_df['timestamp'].min()
+                    days_coverage = total_duration.total_seconds() / (24 * 3600)
+
+                    df = combined_df
+                    print(f"   ✅ Merged data: {len(df)} candles from {df['timestamp'].min()} to {df['timestamp'].max()}")
+                    print(f"   📊 Total coverage: {days_coverage:.1f} days")
+
+                except Exception as e:
+                    print(f"   ⚠️  Error merging old data: {e}")
+                    print(f"   Using only new data")
+
+            # Save the final dataset
+            df.to_csv(filepath, index=False)
+            print(f"💾 Saved to {filepath}")
+
+        return df
+
+    def download_from_binance(self, pair: str, timeframe: str = '1m',
+                              days_back: int = 30, save: bool = True) -> pd.DataFrame:
+        """
+        Download historical data from Binance (using CCXT)
+        Binance has much longer history available (years of data)
+
+        Args:
+            pair: Trading pair (e.g., 'HYPE/USDC', 'BTC/USDC')
+            timeframe: Timeframe ('1m', '5m', '15m', '1h', '4h', '1d')
+            days_back: Number of days of historical data to fetch
+            save: Whether to save to CSV and merge with existing data
+
+        Returns:
+            DataFrame with historical data
+        """
+        print(f"📥 Downloading from Binance: {days_back} days of {timeframe} data for {pair}...")
+
+        # Map pair format (HYPE/USDC → HYPE/USDT for Binance)
+        binance_pair = pair.replace('USDC', 'USDT')
+        print(f"   Using Binance pair: {binance_pair}")
+
+        # Initialize Binance exchange
+        exchange = ccxt.binance({
+            'enableRateLimit': True,  # Respect rate limits
+            'options': {
+                'defaultType': 'spot',  # Use spot market
+            }
+        })
+
+        # Calculate time range
+        end_time = datetime.now()
+        start_time = end_time - timedelta(days=days_back)
+        since = int(start_time.timestamp() * 1000)  # CCXT uses milliseconds
+
+        # Calculate how many candles we need
+        interval_minutes = {'1m': 1, '5m': 5, '15m': 15, '1h': 60, '4h': 240, '1d': 1440}
+        minutes = interval_minutes.get(timeframe, 1)
+        target_candles = int((days_back * 24 * 60) / minutes)
+
+        print(f"   Target: {target_candles} candles from {start_time.strftime('%Y-%m-%d')} to {end_time.strftime('%Y-%m-%d')}")
+
+        all_candles = []
+        current_since = since
+        max_requests = 50  # Safety limit
+
+        try:
+            for request_num in range(max_requests):
+                # Fetch up to 1000 candles per request (Binance limit)
+                ohlcv = exchange.fetch_ohlcv(
+                    binance_pair,
+                    timeframe=timeframe,
+                    since=current_since,
+                    limit=1000
+                )
+
+                if not ohlcv or len(ohlcv) == 0:
+                    print(f"   No more data available")
+                    break
+
+                all_candles.extend(ohlcv)
+
+                oldest_time = datetime.fromtimestamp(ohlcv[0][0] / 1000)
+                newest_time = datetime.fromtimestamp(ohlcv[-1][0] / 1000)
+
+                print(f"   [{request_num + 1}] Fetched {len(ohlcv)} candles: {oldest_time.strftime('%Y-%m-%d %H:%M')} to {newest_time.strftime('%Y-%m-%d %H:%M')} (total: {len(all_candles)})")
+
+                # Check if we have enough data
+                if len(all_candles) >= target_candles:
+                    print(f"   ✓ Reached target of {target_candles} candles")
+                    break
+
+                # Check if we've reached the present
+                if newest_time >= end_time:
+                    print(f"   ✓ Reached present time")
+                    break
+
+                # Move to next chunk (add 1ms to avoid duplicate)
+                current_since = ohlcv[-1][0] + 1
+
+                time.sleep(exchange.rateLimit / 1000)  # Respect rate limit
+
+        except ccxt.NetworkError as e:
+            print(f"   ⚠️  Network error: {e}")
+            if len(all_candles) == 0:
+                raise ValueError(f"Could not fetch data from Binance: {e}")
+        except ccxt.ExchangeError as e:
+            print(f"   ⚠️  Exchange error: {e}")
+            if len(all_candles) == 0:
+                raise ValueError(f"Binance error: {e}")
+        except Exception as e:
+            print(f"   ⚠️  Error: {e}")
+            if len(all_candles) == 0:
+                raise ValueError(f"Failed to fetch from Binance: {e}")
+
+        if not all_candles:
+            raise ValueError(f"No data fetched for {pair} from Binance")
+
+        # Convert to DataFrame
+        # CCXT format: [timestamp, open, high, low, close, volume]
+        df = pd.DataFrame(all_candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+
+        # Remove duplicates
+        df = df.sort_values('timestamp')
+        df = df.drop_duplicates(subset='timestamp', keep='last')
+        df = df.reset_index(drop=True)
+
+        print(f"📦 Downloaded {len(df)} candles from {df['timestamp'].min()} to {df['timestamp'].max()}")
+
+        # Merge with existing data if requested
+        if save:
+            filename = self._get_filename(pair, timeframe)
+            filepath = self.data_dir / filename
+
+            if filepath.exists():
+                print(f"📂 Found existing data file, merging with new data...")
+                try:
+                    old_df = pd.read_csv(filepath)
+                    old_df['timestamp'] = pd.to_datetime(old_df['timestamp'])
+
+                    old_count = len(old_df)
+                    old_min = old_df['timestamp'].min()
+                    old_max = old_df['timestamp'].max()
+
+                    print(f"   Old data: {old_count} candles from {old_min} to {old_max}")
+
+                    # Combine old and new data
+                    combined_df = pd.concat([old_df, df], ignore_index=True)
+
+                    # Remove duplicates (keep the newer data)
+                    combined_df = combined_df.sort_values('timestamp')
+                    combined_df = combined_df.drop_duplicates(subset='timestamp', keep='last')
+                    combined_df = combined_df.reset_index(drop=True)
 
                     # Calculate total coverage
                     total_duration = combined_df['timestamp'].max() - combined_df['timestamp'].min()
