@@ -185,23 +185,30 @@ class HistoricalDataLoader:
         url = "https://api.hyperliquid.xyz/info"
 
         all_candles = []
-        current_end = end_time
+        current_end_time = end_time
         max_requests = 20  # Safety limit to prevent infinite loops
 
+        print(f"  Fetching data backwards from {end_time.strftime('%Y-%m-%d %H:%M')}")
+
         # Fetch data in chunks, working backwards from present
-        # Each request gets up to 5000 candles
+        # Strategy: Request with endTime = current point, startTime = far back
+        # API returns the LAST 5000 candles in that range
+        # Then use oldest candle from response as new endTime
         for request_num in range(max_requests):
-            # Calculate chunk start time (go back enough to get ~5000 candles)
-            chunk_duration = timedelta(minutes=5000 * minutes)
-            chunk_start = max(current_end - chunk_duration, start_time)
+            # For the request, use a very early startTime (far in the past)
+            # This ensures we get the maximum 5000 candles ending at current_end_time
+            far_back_time = current_end_time - timedelta(days=365)  # 1 year back
+
+            # But don't go earlier than what user requested
+            request_start = max(far_back_time, start_time)
 
             payload = {
                 'type': 'candleSnapshot',
                 'req': {
                     'coin': symbol,
                     'interval': hl_interval,
-                    'startTime': int(chunk_start.timestamp() * 1000),
-                    'endTime': int(current_end.timestamp() * 1000)
+                    'startTime': int(request_start.timestamp() * 1000),
+                    'endTime': int(current_end_time.timestamp() * 1000)
                 }
             }
 
@@ -210,43 +217,42 @@ class HistoricalDataLoader:
                 response.raise_for_status()
                 candles = response.json()
 
-                if not candles:
-                    print(f"  No more data available")
+                if not candles or len(candles) == 0:
+                    print(f"  No more data available before {current_end_time.strftime('%Y-%m-%d %H:%M')}")
                     break
 
-                # Check for duplicates before adding
-                existing_timestamps = {c['t'] for c in all_candles}
-                new_candles = [c for c in candles if c['t'] not in existing_timestamps]
+                # The API returns candles in chronological order
+                # We want to prepend older candles to our collection
+                # So add them to the beginning
+                all_candles = candles + all_candles
 
-                if not new_candles:
-                    print(f"  No new candles (all duplicates) - reached data limit")
-                    break
+                oldest_candle_time = datetime.fromtimestamp(candles[0]['t'] / 1000)
+                newest_candle_time = datetime.fromtimestamp(candles[-1]['t'] / 1000)
 
-                # Add candles to our collection (they come in chronological order)
-                all_candles = new_candles + all_candles  # Prepend to keep chronological order
-
-                print(f"  Fetched {len(candles)} candles ({len(new_candles)} new, total: {len(all_candles)})")
+                print(f"  [{request_num + 1}] Fetched {len(candles)} candles: {oldest_candle_time.strftime('%Y-%m-%d %H:%M')} to {newest_candle_time.strftime('%Y-%m-%d %H:%M')} (total: {len(all_candles)})")
 
                 # Check if we have enough data
                 if len(all_candles) >= target_candles:
                     print(f"  ✓ Reached target of {target_candles} candles")
                     break
 
-                # Check if we've reached the start time
-                if chunk_start <= start_time:
-                    print(f"  ✓ Reached requested time range")
+                # Check if the oldest candle is before our target start time
+                if oldest_candle_time <= start_time:
+                    print(f"  ✓ Reached requested start time")
                     break
 
-                # If we got less than 1000 new candles, we're probably at the data limit
-                if len(new_candles) < 1000:
-                    print(f"  ⚠️  Only {len(new_candles)} new candles - likely reached Hyperliquid data limit")
-                    print(f"  Hyperliquid only keeps ~5000 recent candles per pair")
-                    break
+                # If we got fewer than 4000 candles, we might be hitting the limit
+                # (5000 is max, so getting significantly less suggests no more data)
+                if len(candles) < 4000:
+                    print(f"  ⚠️  Only got {len(candles)} candles - might be at Hyperliquid's data limit")
+                    if len(candles) < 100:
+                        print(f"  Stopping: too few candles to continue")
+                        break
 
                 # Move the window backwards for next request
-                # Use the oldest timestamp from this batch minus 1ms to avoid overlap
-                oldest_timestamp = new_candles[0]['t']
-                current_end = datetime.fromtimestamp((oldest_timestamp - 1) / 1000)
+                # New endTime = oldest candle timestamp minus 1ms to avoid overlap
+                oldest_timestamp_ms = candles[0]['t']
+                current_end_time = datetime.fromtimestamp((oldest_timestamp_ms - 1) / 1000)
 
                 time.sleep(0.5)  # Rate limiting
 
