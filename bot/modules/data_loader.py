@@ -279,14 +279,69 @@ class HistoricalDataLoader:
         df = df.sort_values('timestamp').reset_index(drop=True)
         df = df.drop_duplicates(subset='timestamp', keep='last')
 
-        print(f"Downloaded {len(df)} candles from {df['timestamp'].min()} to {df['timestamp'].max()}")
+        print(f"📦 Downloaded {len(df)} candles from {df['timestamp'].min()} to {df['timestamp'].max()}")
 
-        # Save to CSV
+        # Check if we have existing historical data to merge with
         if save:
             filename = self._get_filename(pair, timeframe)
             filepath = self.data_dir / filename
+
+            if filepath.exists():
+                print(f"📂 Found existing data file, merging with new data...")
+                try:
+                    old_df = pd.read_csv(filepath)
+                    old_df['timestamp'] = pd.to_datetime(old_df['timestamp'])
+
+                    old_count = len(old_df)
+                    old_min = old_df['timestamp'].min()
+                    old_max = old_df['timestamp'].max()
+
+                    print(f"   Old data: {old_count} candles from {old_min} to {old_max}")
+
+                    # Combine old and new data
+                    combined_df = pd.concat([old_df, df], ignore_index=True)
+
+                    # Remove duplicates (keep the newer data)
+                    combined_df = combined_df.sort_values('timestamp')
+                    combined_df = combined_df.drop_duplicates(subset='timestamp', keep='last')
+                    combined_df = combined_df.reset_index(drop=True)
+
+                    # Detect gaps (missing data periods)
+                    if len(combined_df) > 1:
+                        # Calculate expected time between candles
+                        interval_map = {'1m': 1, '5m': 5, '15m': 15, '1h': 60, '4h': 240, '1d': 1440}
+                        expected_minutes = interval_map.get(timeframe, 1)
+                        expected_delta = timedelta(minutes=expected_minutes)
+
+                        # Check for gaps larger than 2x expected interval
+                        time_diffs = combined_df['timestamp'].diff()
+                        large_gaps = time_diffs[time_diffs > expected_delta * 2]
+
+                        if len(large_gaps) > 0:
+                            print(f"   ⚠️  Found {len(large_gaps)} data gaps:")
+                            for idx in large_gaps.head(3).index:
+                                gap_start = combined_df.loc[idx-1, 'timestamp']
+                                gap_end = combined_df.loc[idx, 'timestamp']
+                                gap_duration = gap_end - gap_start
+                                print(f"      Gap: {gap_start} to {gap_end} ({gap_duration})")
+                            if len(large_gaps) > 3:
+                                print(f"      ... and {len(large_gaps) - 3} more gaps")
+
+                    # Calculate total coverage
+                    total_duration = combined_df['timestamp'].max() - combined_df['timestamp'].min()
+                    days_coverage = total_duration.total_seconds() / (24 * 3600)
+
+                    df = combined_df
+                    print(f"   ✅ Merged data: {len(df)} candles from {df['timestamp'].min()} to {df['timestamp'].max()}")
+                    print(f"   📊 Total coverage: {days_coverage:.1f} days")
+
+                except Exception as e:
+                    print(f"   ⚠️  Error merging old data: {e}")
+                    print(f"   Using only new data")
+
+            # Save the final dataset
             df.to_csv(filepath, index=False)
-            print(f"Saved to {filepath}")
+            print(f"💾 Saved to {filepath}")
 
         return df
 
