@@ -214,10 +214,18 @@ class HistoricalDataLoader:
                     print(f"  No more data available")
                     break
 
-                # Add candles to our collection (they come in chronological order)
-                all_candles = candles + all_candles  # Prepend to keep chronological order
+                # Check for duplicates before adding
+                existing_timestamps = {c['t'] for c in all_candles}
+                new_candles = [c for c in candles if c['t'] not in existing_timestamps]
 
-                print(f"  Fetched {len(candles)} candles (total: {len(all_candles)})")
+                if not new_candles:
+                    print(f"  No new candles (all duplicates) - reached data limit")
+                    break
+
+                # Add candles to our collection (they come in chronological order)
+                all_candles = new_candles + all_candles  # Prepend to keep chronological order
+
+                print(f"  Fetched {len(candles)} candles ({len(new_candles)} new, total: {len(all_candles)})")
 
                 # Check if we have enough data
                 if len(all_candles) >= target_candles:
@@ -229,10 +237,16 @@ class HistoricalDataLoader:
                     print(f"  ✓ Reached requested time range")
                     break
 
+                # If we got less than 1000 new candles, we're probably at the data limit
+                if len(new_candles) < 1000:
+                    print(f"  ⚠️  Only {len(new_candles)} new candles - likely reached Hyperliquid data limit")
+                    print(f"  Hyperliquid only keeps ~5000 recent candles per pair")
+                    break
+
                 # Move the window backwards for next request
-                # Use the oldest timestamp from this batch
-                oldest_timestamp = candles[0]['t']
-                current_end = datetime.fromtimestamp(oldest_timestamp / 1000)
+                # Use the oldest timestamp from this batch minus 1ms to avoid overlap
+                oldest_timestamp = new_candles[0]['t']
+                current_end = datetime.fromtimestamp((oldest_timestamp - 1) / 1000)
 
                 time.sleep(0.5)  # Rate limiting
 
