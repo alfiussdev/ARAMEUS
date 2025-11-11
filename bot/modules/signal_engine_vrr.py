@@ -439,6 +439,24 @@ class VRRSignalEngine:
 
         return False, ""
 
+    def check_invalidation(self, position_side: str, indicators: Dict[str, Any]) -> Tuple[bool, str]:
+        """
+        Check if current position should be invalidated (for backtester compatibility)
+
+        VRR uses adaptive exits instead of invalidation, so this always returns False
+        The actual exit logic is handled by check_adaptive_exit()
+
+        Args:
+            position_side: Current position side ('LONG' or 'SHORT')
+            indicators: Current indicator values
+
+        Returns:
+            Tuple of (should_invalidate, reason) - always (False, "") for VRR
+        """
+        # VRR doesn't use invalidation logic from pullback strategy
+        # It uses adaptive exits based on volume, RSI, and counter candles
+        return False, ""
+
     def get_signal_summary(self, signal: SignalType, confidence: float,
                           filters: Dict[str, bool]) -> str:
         """
