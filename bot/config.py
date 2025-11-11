@@ -50,7 +50,9 @@ class Config:
 
     # RSI Thresholds
     RSI_LONG_THRESHOLD = int(os.getenv('RSI_LONG_THRESHOLD', '55'))
+    RSI_LONG_MAX = int(os.getenv('RSI_LONG_MAX', '100'))  # Max RSI for LONG entry (anti-exhaustion)
     RSI_SHORT_THRESHOLD = int(os.getenv('RSI_SHORT_THRESHOLD', '45'))
+    RSI_SHORT_MIN = int(os.getenv('RSI_SHORT_MIN', '0'))  # Min RSI for SHORT entry (anti-exhaustion)
     RSI_INVALIDATION_LONG = int(os.getenv('RSI_INVALIDATION_LONG', '50'))
     RSI_INVALIDATION_SHORT = int(os.getenv('RSI_INVALIDATION_SHORT', '50'))
 

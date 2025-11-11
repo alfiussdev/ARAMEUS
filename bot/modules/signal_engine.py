@@ -124,8 +124,10 @@ class SignalEngine:
         # 3. Institutional bias: close > VWAP
         filters['vwap_ok'] = indicators['current_close'] > indicators['vwap']
 
-        # 4. Healthy momentum (RSI): RSI > 52
-        filters['rsi_ok'] = indicators['rsi'] > self.config.RSI_LONG_THRESHOLD
+        # 4. Healthy momentum (RSI): RSI > threshold AND < max (anti-exhaustion)
+        rsi_in_range = (indicators['rsi'] > self.config.RSI_LONG_THRESHOLD and
+                        indicators['rsi'] < self.config.RSI_LONG_MAX)
+        filters['rsi_ok'] = rsi_in_range
 
         # 5. Strong relative volume (simplified - only 20-period check)
         vol_ratio_20 = indicators['volume_current'] / indicators['volume_mean_20'] if indicators['volume_mean_20'] > 0 else 0
@@ -218,8 +220,10 @@ class SignalEngine:
         # 3. Institutional bias: close < VWAP
         filters['vwap_ok'] = indicators['current_close'] < indicators['vwap']
 
-        # 4. Healthy momentum (RSI): RSI < 48
-        filters['rsi_ok'] = indicators['rsi'] < self.config.RSI_SHORT_THRESHOLD
+        # 4. Healthy momentum (RSI): RSI < threshold AND > min (anti-exhaustion)
+        rsi_in_range = (indicators['rsi'] < self.config.RSI_SHORT_THRESHOLD and
+                        indicators['rsi'] > self.config.RSI_SHORT_MIN)
+        filters['rsi_ok'] = rsi_in_range
 
         # 5. Strong relative volume (simplified - only 20-period check)
         vol_ratio_20 = indicators['volume_current'] / indicators['volume_mean_20'] if indicators['volume_mean_20'] > 0 else 0
