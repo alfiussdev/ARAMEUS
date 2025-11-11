@@ -54,6 +54,13 @@ class Config:
     RSI_INVALIDATION_LONG = int(os.getenv('RSI_INVALIDATION_LONG', '50'))
     RSI_INVALIDATION_SHORT = int(os.getenv('RSI_INVALIDATION_SHORT', '50'))
 
+    # Invalidation Mode
+    # NONE: No early invalidation, only stops
+    # LIGHT: Only RSI invalidation
+    # MODERATE: RSI + VWAP invalidation
+    # AGGRESSIVE: RSI + VWAP + EMA cross invalidation (original)
+    INVALIDATION_MODE = os.getenv('INVALIDATION_MODE', 'AGGRESSIVE').upper()
+
     # Indicator Periods
     SMA_SHORT_PERIOD = int(os.getenv('SMA_SHORT_PERIOD', '50'))
     SMA_LONG_PERIOD = int(os.getenv('SMA_LONG_PERIOD', '200'))

@@ -296,27 +296,44 @@ class SignalEngine:
         Returns:
             Tuple of (should_invalidate, reason)
         """
+        # Get invalidation mode from config
+        mode = self.config.INVALIDATION_MODE
+
+        # NONE mode: Never invalidate early, only use stops
+        if mode == 'NONE':
+            return False, ""
+
         if position_side == 'LONG':
-            # Check LONG invalidation conditions
-            if indicators['ema9'] <= indicators['ema20']:
-                return True, "EMA9 crossed below EMA20"
+            # RSI invalidation (used in LIGHT, MODERATE, AGGRESSIVE)
+            if mode in ['LIGHT', 'MODERATE', 'AGGRESSIVE']:
+                if indicators['rsi'] < self.config.RSI_INVALIDATION_LONG:
+                    return True, f"RSI dropped below {self.config.RSI_INVALIDATION_LONG}"
 
-            if indicators['current_close'] < indicators['vwap']:
-                return True, "Price fell below VWAP"
+            # VWAP invalidation (used in MODERATE, AGGRESSIVE)
+            if mode in ['MODERATE', 'AGGRESSIVE']:
+                if indicators['current_close'] < indicators['vwap']:
+                    return True, "Price fell below VWAP"
 
-            if indicators['rsi'] < self.config.RSI_INVALIDATION_LONG:
-                return True, f"RSI dropped below {self.config.RSI_INVALIDATION_LONG}"
+            # EMA cross invalidation (only in AGGRESSIVE - too sensitive for 1m data)
+            if mode == 'AGGRESSIVE':
+                if indicators['ema9'] <= indicators['ema20']:
+                    return True, "EMA9 crossed below EMA20"
 
         elif position_side == 'SHORT':
-            # Check SHORT invalidation conditions
-            if indicators['ema9'] >= indicators['ema20']:
-                return True, "EMA9 crossed above EMA20"
+            # RSI invalidation (used in LIGHT, MODERATE, AGGRESSIVE)
+            if mode in ['LIGHT', 'MODERATE', 'AGGRESSIVE']:
+                if indicators['rsi'] > self.config.RSI_INVALIDATION_SHORT:
+                    return True, f"RSI rose above {self.config.RSI_INVALIDATION_SHORT}"
 
-            if indicators['current_close'] > indicators['vwap']:
-                return True, "Price rose above VWAP"
+            # VWAP invalidation (used in MODERATE, AGGRESSIVE)
+            if mode in ['MODERATE', 'AGGRESSIVE']:
+                if indicators['current_close'] > indicators['vwap']:
+                    return True, "Price rose above VWAP"
 
-            if indicators['rsi'] > self.config.RSI_INVALIDATION_SHORT:
-                return True, f"RSI rose above {self.config.RSI_INVALIDATION_SHORT}"
+            # EMA cross invalidation (only in AGGRESSIVE - too sensitive for 1m data)
+            if mode == 'AGGRESSIVE':
+                if indicators['ema9'] >= indicators['ema20']:
+                    return True, "EMA9 crossed above EMA20"
 
         return False, ""
 
