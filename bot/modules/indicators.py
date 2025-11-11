@@ -726,6 +726,10 @@ class IndicatorEngine:
                 'has_valid_structure': bool
             }
         """
+        # Convert deque to list if needed (for slicing support)
+        if not isinstance(candles, list):
+            candles = list(candles)
+
         if len(candles) < 20:
             return {
                 'resistance_level': None,
@@ -803,6 +807,10 @@ class IndicatorEngine:
                 'closed_inside': bool
             }
         """
+        # Convert deque to list if needed (for slicing support)
+        if not isinstance(candles, list):
+            candles = list(candles)
+
         if len(candles) < 20:
             return {
                 'is_sweep': False,
@@ -889,6 +897,12 @@ class IndicatorEngine:
                 'rsi_extreme': float
             }
         """
+        # Convert deque to list if needed (for slicing support)
+        if not isinstance(candles, list):
+            candles = list(candles)
+        if not isinstance(rsi_values, list):
+            rsi_values = list(rsi_values)
+
         if len(candles) < lookback or len(rsi_values) < lookback:
             return {
                 'has_divergence': False,
