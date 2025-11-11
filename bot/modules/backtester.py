@@ -14,6 +14,7 @@ from bot.modules.indicators import IndicatorEngine
 from bot.modules.signal_engine import SignalEngine, SignalType
 from bot.modules.signal_engine_vrr import VRRSignalEngine
 from bot.modules.signal_engine_dpc import DPCSignalEngine
+from bot.modules.signal_engine_lsr import LSRSignalEngine
 from bot.modules.risk_manager import RiskManager
 from bot.modules.risk_controls import RiskControls
 from bot.modules.performance_metrics import PerformanceMetrics
@@ -47,14 +48,22 @@ class Backtester:
             self.signal_engine = VRRSignalEngine(config, mock_logger, self.indicator_engine)
             self.is_vrr_strategy = True
             self.is_dpc_strategy = False
+            self.is_lsr_strategy = False
         elif self.strategy_type == 'DPC':
             self.signal_engine = DPCSignalEngine(config, mock_logger, self.indicator_engine)
             self.is_vrr_strategy = False
             self.is_dpc_strategy = True
+            self.is_lsr_strategy = False
+        elif self.strategy_type == 'LSR':
+            self.signal_engine = LSRSignalEngine(config, mock_logger, self.indicator_engine)
+            self.is_vrr_strategy = False
+            self.is_dpc_strategy = False
+            self.is_lsr_strategy = True
         else:
             self.signal_engine = SignalEngine(config, mock_logger)
             self.is_vrr_strategy = False
             self.is_dpc_strategy = False
+            self.is_lsr_strategy = False
 
         self.risk_manager = RiskManager(config, mock_logger)
         self.risk_controls = RiskControls(config, mock_logger, backtest_mode=True)
@@ -86,6 +95,8 @@ class Backtester:
             strategy_name = "VRR (Volatility Rejection Reversal)"
         elif self.is_dpc_strategy:
             strategy_name = "DPC (Dynamic Pullback Continuation)"
+        elif self.is_lsr_strategy:
+            strategy_name = "LSR (Liquidity Sweep + Reaction)"
         else:
             strategy_name = "Pullback Strategy"
         print(f"\n{'='*70}")
@@ -211,8 +222,8 @@ class Backtester:
         }
 
         # Evaluate signal with debug mode
-        if self.is_vrr_strategy or self.is_dpc_strategy:
-            # VRR and DPC strategies need the full candle list for pattern recognition
+        if self.is_vrr_strategy or self.is_dpc_strategy or self.is_lsr_strategy:
+            # VRR, DPC, and LSR strategies need the full candle list for pattern recognition
             candles = self.indicator_engine.candle_buffer.get(pair, [])
             signal, confidence, filters = self.signal_engine.evaluate_signal(
                 pair, indicators, orderbook, candles,

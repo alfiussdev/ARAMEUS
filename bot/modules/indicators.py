@@ -704,3 +704,269 @@ class IndicatorEngine:
             'distance_to_low': distance_to_low,
             'near_liquidity_zone': near_liquidity_zone
         }
+
+    def detect_swing_levels_with_touches(self, candles: List[Dict[str, Any]],
+                                         min_touches: int = 3,
+                                         touch_tolerance: float = 0.008) -> Dict[str, Any]:
+        """
+        Detect swing high/low levels with multiple touches (support/resistance).
+        Used for LSR strategy to find liquidity zones.
+
+        Args:
+            candles: List of candle dictionaries
+            min_touches: Minimum number of touches to consider a valid level
+            touch_tolerance: % tolerance for considering a price "touching" a level (0.8%)
+
+        Returns:
+            dict: {
+                'resistance_level': float or None,
+                'support_level': float or None,
+                'resistance_touches': int,
+                'support_touches': int,
+                'has_valid_structure': bool
+            }
+        """
+        if len(candles) < 20:
+            return {
+                'resistance_level': None,
+                'support_level': None,
+                'resistance_touches': 0,
+                'support_touches': 0,
+                'has_valid_structure': False
+            }
+
+        # Use last 60 candles for structure detection (1 hour on 1m)
+        lookback = min(60, len(candles))
+        recent_candles = candles[-lookback:]
+
+        # Find local highs and lows
+        highs = [c['high'] for c in recent_candles]
+        lows = [c['low'] for c in recent_candles]
+
+        # Find most prominent high and low (simple approach: highest/lowest in range)
+        resistance_candidate = max(highs)
+        support_candidate = min(lows)
+
+        # Count touches within tolerance
+        resistance_touches = 0
+        support_touches = 0
+
+        for candle in recent_candles:
+            # Check if high touched resistance
+            if abs(candle['high'] - resistance_candidate) / resistance_candidate <= touch_tolerance:
+                resistance_touches += 1
+
+            # Check if low touched support
+            if abs(candle['low'] - support_candidate) / support_candidate <= touch_tolerance:
+                support_touches += 1
+
+        # Validate structure
+        has_valid_resistance = resistance_touches >= min_touches
+        has_valid_support = support_touches >= min_touches
+        has_valid_structure = has_valid_resistance or has_valid_support
+
+        return {
+            'resistance_level': resistance_candidate if has_valid_resistance else None,
+            'support_level': support_candidate if has_valid_support else None,
+            'resistance_touches': resistance_touches,
+            'support_touches': support_touches,
+            'has_valid_structure': has_valid_structure
+        }
+
+    def detect_liquidity_sweep(self, candles: List[Dict[str, Any]],
+                               swing_level: float,
+                               direction: str,
+                               min_volume_mult: float = 2.5,
+                               min_wick_ratio: float = 0.50) -> Dict[str, Any]:
+        """
+        Detect if the current candle performed a liquidity sweep (fakeout).
+
+        A sweep occurs when:
+        1. Price breaks a key level (swing high/low)
+        2. Volume is elevated (≥2.5× avg)
+        3. Candle has large wick (≥50%)
+        4. Price closes back inside the range (rejection)
+
+        Args:
+            candles: List of candle dictionaries
+            swing_level: The swing high or low being tested
+            direction: 'bullish_sweep' (tests support) or 'bearish_sweep' (tests resistance)
+            min_volume_mult: Minimum volume multiplier vs average
+            min_wick_ratio: Minimum wick ratio (0.50 = 50%)
+
+        Returns:
+            dict: {
+                'is_sweep': bool,
+                'sweep_distance': float (% beyond level),
+                'wick_ratio': float,
+                'volume_ratio': float,
+                'closed_inside': bool
+            }
+        """
+        if len(candles) < 20:
+            return {
+                'is_sweep': False,
+                'sweep_distance': 0.0,
+                'wick_ratio': 0.0,
+                'volume_ratio': 0.0,
+                'closed_inside': False
+            }
+
+        current_candle = candles[-1]
+        prev_candles = candles[-21:-1]  # 20 candles for volume average
+
+        # Calculate volume ratio
+        avg_volume = np.mean([c['volume'] for c in prev_candles])
+        volume_ratio = current_candle['volume'] / avg_volume if avg_volume > 0 else 0
+
+        # Calculate wick ratios
+        wick_data = self.calculate_wick_ratio(current_candle, direction='auto')
+
+        # Check sweep conditions based on direction
+        if direction == 'bullish_sweep':
+            # Testing support from below (bearish candle sweeps support, then closes inside)
+            swept_below = current_candle['low'] < swing_level
+            closed_above = current_candle['close'] > swing_level
+            relevant_wick_ratio = wick_data['lower_wick_ratio']
+            sweep_distance = ((swing_level - current_candle['low']) / swing_level) * 100 if swept_below else 0.0
+
+        elif direction == 'bearish_sweep':
+            # Testing resistance from above (bullish candle sweeps resistance, then closes inside)
+            swept_above = current_candle['high'] > swing_level
+            closed_below = current_candle['close'] < swing_level
+            relevant_wick_ratio = wick_data['upper_wick_ratio']
+            sweep_distance = ((current_candle['high'] - swing_level) / swing_level) * 100 if swept_above else 0.0
+
+        else:
+            return {
+                'is_sweep': False,
+                'sweep_distance': 0.0,
+                'wick_ratio': 0.0,
+                'volume_ratio': volume_ratio,
+                'closed_inside': False
+            }
+
+        # Validate all conditions
+        volume_ok = volume_ratio >= min_volume_mult
+        wick_ok = relevant_wick_ratio >= min_wick_ratio
+
+        if direction == 'bullish_sweep':
+            closed_inside = swept_below and closed_above
+        else:
+            closed_inside = swept_above and closed_below
+
+        is_sweep = volume_ok and wick_ok and closed_inside
+
+        return {
+            'is_sweep': is_sweep,
+            'sweep_distance': sweep_distance,
+            'wick_ratio': relevant_wick_ratio,
+            'volume_ratio': volume_ratio,
+            'closed_inside': closed_inside
+        }
+
+    def detect_rsi_divergence(self, candles: List[Dict[str, Any]],
+                             rsi_values: List[float],
+                             direction: str,
+                             lookback: int = 10) -> Dict[str, Any]:
+        """
+        Detect RSI divergence (price makes new high/low but RSI doesn't).
+
+        Bullish divergence: Price makes lower low, RSI makes higher low
+        Bearish divergence: Price makes higher high, RSI makes lower high
+
+        Args:
+            candles: List of candle dictionaries
+            rsi_values: List of RSI values (same length as candles)
+            direction: 'bullish' or 'bearish'
+            lookback: Number of candles to look back for swing comparison
+
+        Returns:
+            dict: {
+                'has_divergence': bool,
+                'divergence_strength': float (0-1),
+                'price_extreme': float,
+                'rsi_extreme': float
+            }
+        """
+        if len(candles) < lookback or len(rsi_values) < lookback:
+            return {
+                'has_divergence': False,
+                'divergence_strength': 0.0,
+                'price_extreme': 0.0,
+                'rsi_extreme': 0.0
+            }
+
+        recent_candles = candles[-lookback:]
+        recent_rsi = rsi_values[-lookback:]
+
+        current_candle = candles[-1]
+        current_rsi = rsi_values[-1]
+
+        if direction == 'bullish':
+            # Look for lower low in price, higher low in RSI
+            price_lows = [c['low'] for c in recent_candles]
+            prev_low_price = min(price_lows[:-1]) if len(price_lows) > 1 else price_lows[0]
+            current_low_price = current_candle['low']
+
+            prev_low_rsi_idx = price_lows.index(prev_low_price)
+            prev_low_rsi = recent_rsi[prev_low_rsi_idx]
+
+            # Bullish divergence: price lower, RSI higher
+            price_makes_lower_low = current_low_price < prev_low_price
+            rsi_makes_higher_low = current_rsi > prev_low_rsi
+
+            has_divergence = price_makes_lower_low and rsi_makes_higher_low
+
+            # Strength: how much RSI recovered vs price decline
+            if has_divergence:
+                price_decline_pct = ((prev_low_price - current_low_price) / prev_low_price) * 100
+                rsi_recovery = current_rsi - prev_low_rsi
+                divergence_strength = min(1.0, rsi_recovery / 20.0)  # Normalize to 0-1
+            else:
+                divergence_strength = 0.0
+
+            return {
+                'has_divergence': has_divergence,
+                'divergence_strength': divergence_strength,
+                'price_extreme': current_low_price,
+                'rsi_extreme': current_rsi
+            }
+
+        elif direction == 'bearish':
+            # Look for higher high in price, lower high in RSI
+            price_highs = [c['high'] for c in recent_candles]
+            prev_high_price = max(price_highs[:-1]) if len(price_highs) > 1 else price_highs[0]
+            current_high_price = current_candle['high']
+
+            prev_high_rsi_idx = price_highs.index(prev_high_price)
+            prev_high_rsi = recent_rsi[prev_high_rsi_idx]
+
+            # Bearish divergence: price higher, RSI lower
+            price_makes_higher_high = current_high_price > prev_high_price
+            rsi_makes_lower_high = current_rsi < prev_high_rsi
+
+            has_divergence = price_makes_higher_high and rsi_makes_lower_high
+
+            # Strength: how much RSI weakened vs price advance
+            if has_divergence:
+                price_advance_pct = ((current_high_price - prev_high_price) / prev_high_price) * 100
+                rsi_decline = prev_high_rsi - current_rsi
+                divergence_strength = min(1.0, rsi_decline / 20.0)  # Normalize to 0-1
+            else:
+                divergence_strength = 0.0
+
+            return {
+                'has_divergence': has_divergence,
+                'divergence_strength': divergence_strength,
+                'price_extreme': current_high_price,
+                'rsi_extreme': current_rsi
+            }
+
+        else:
+            return {
+                'has_divergence': False,
+                'divergence_strength': 0.0,
+                'price_extreme': 0.0,
+                'rsi_extreme': 0.0
+            }

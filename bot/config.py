@@ -229,6 +229,54 @@ class Config:
     DPC_VOL_FADE_RATIO = float(os.getenv('DPC_VOL_FADE_RATIO', '0.60'))
     DPC_EXIT_ON_EMA_CROSS = os.getenv('DPC_EXIT_ON_EMA_CROSS', 'true').lower() == 'true'
 
+    # ========================================================================
+    # LSR (Liquidity Sweep + Reaction Engine) Strategy Parameters
+    # ========================================================================
+
+    # LSR Market Regime Filters
+    LSR_ATR_MIN_RATIO = float(os.getenv('LSR_ATR_MIN_RATIO', '1.0'))
+    LSR_MAX_SPREAD_PCT = float(os.getenv('LSR_MAX_SPREAD_PCT', '0.0025'))
+    LSR_START_HOUR = int(os.getenv('LSR_START_HOUR', '7'))
+    LSR_END_HOUR = int(os.getenv('LSR_END_HOUR', '20'))
+
+    # LSR Structure Detection (Swing Levels with Multiple Touches)
+    LSR_MIN_TOUCHES = int(os.getenv('LSR_MIN_TOUCHES', '3'))
+    LSR_TOUCH_TOLERANCE = float(os.getenv('LSR_TOUCH_TOLERANCE', '0.008'))
+    LSR_STRUCTURE_LOOKBACK = int(os.getenv('LSR_STRUCTURE_LOOKBACK', '60'))
+
+    # LSR Liquidity Sweep Detection
+    LSR_SWEEP_VOLUME_MULT = float(os.getenv('LSR_SWEEP_VOLUME_MULT', '2.5'))
+    LSR_SWEEP_MIN_WICK = float(os.getenv('LSR_SWEEP_MIN_WICK', '0.50'))
+
+    # LSR RSI Divergence
+    LSR_RSI_LOOKBACK = int(os.getenv('LSR_RSI_LOOKBACK', '10'))
+
+    # LSR Confirmation Candle
+    LSR_CONFIRM_VOLUME_MULT = float(os.getenv('LSR_CONFIRM_VOLUME_MULT', '1.2'))
+    LSR_CONFIRM_MAX_SPREAD = float(os.getenv('LSR_CONFIRM_MAX_SPREAD', '0.002'))
+    LSR_CONFIRM_TIMEOUT = int(os.getenv('LSR_CONFIRM_TIMEOUT', '3'))
+
+    # LSR Stop Loss
+    LSR_MAX_SL_PCT = float(os.getenv('LSR_MAX_SL_PCT', '0.006'))
+    LSR_SL_VOLATILITY_MULT = float(os.getenv('LSR_SL_VOLATILITY_MULT', '1.25'))
+    LSR_HIGH_VOL_ATR_THRESHOLD = float(os.getenv('LSR_HIGH_VOL_ATR_THRESHOLD', '1.5'))
+
+    # LSR Take Profit
+    LSR_TP1_RR = float(os.getenv('LSR_TP1_RR', '2.5'))
+    LSR_TP2_RR = float(os.getenv('LSR_TP2_RR', '4.0'))
+    LSR_TP1_CLOSE_PCT = float(os.getenv('LSR_TP1_CLOSE_PCT', '0.50'))
+
+    # LSR Trailing Stop
+    LSR_TRAILING_ACTIVATION_RR = float(os.getenv('LSR_TRAILING_ACTIVATION_RR', '2.5'))
+    LSR_TRAILING_DISTANCE_RR = float(os.getenv('LSR_TRAILING_DISTANCE_RR', '0.8'))
+
+    # LSR Invalidation Exit
+    LSR_INVALIDATION_CANDLES = int(os.getenv('LSR_INVALIDATION_CANDLES', '2'))
+    LSR_VOLUME_FADE_MULT = float(os.getenv('LSR_VOLUME_FADE_MULT', '0.5'))
+    LSR_EXIT_ON_RSI_EXTREME = os.getenv('LSR_EXIT_ON_RSI_EXTREME', 'true').lower() == 'true'
+    LSR_RSI_LONG_EXIT = int(os.getenv('LSR_RSI_LONG_EXIT', '70'))
+    LSR_RSI_SHORT_EXIT = int(os.getenv('LSR_RSI_SHORT_EXIT', '30'))
+
     # Timeframes
     PRIMARY_TIMEFRAME = os.getenv('PRIMARY_TIMEFRAME', '1m')
     CONFIRMATION_TIMEFRAME = os.getenv('CONFIRMATION_TIMEFRAME', '5m')
