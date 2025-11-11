@@ -160,6 +160,75 @@ class Config:
     VRR_CANCEL_ON_VWAP_CROSS = os.getenv('VRR_CANCEL_ON_VWAP_CROSS', 'true').lower() == 'true'
     VRR_CANCEL_ON_NEW_EXPANSION = os.getenv('VRR_CANCEL_ON_NEW_EXPANSION', 'true').lower() == 'true'
 
+    # ========================================================================
+    # DPC STRATEGY CONFIGURATION (Dynamic Pullback Continuation)
+    # ========================================================================
+
+    # DPC Market Regime Filters
+    DPC_ENABLE_EMA_STACK = os.getenv('DPC_ENABLE_EMA_STACK', 'true').lower() == 'true'
+    DPC_EMA_FAST = int(os.getenv('DPC_EMA_FAST', '20'))
+    DPC_EMA_MID = int(os.getenv('DPC_EMA_MID', '50'))
+    DPC_EMA_SLOW = int(os.getenv('DPC_EMA_SLOW', '100'))
+
+    DPC_ENABLE_VOL_FILTER = os.getenv('DPC_ENABLE_VOL_FILTER', 'true').lower() == 'true'
+    DPC_ATR_CURRENT_PERIOD = int(os.getenv('DPC_ATR_CURRENT_PERIOD', '14'))
+    DPC_ATR_BASELINE_PERIOD = int(os.getenv('DPC_ATR_BASELINE_PERIOD', '50'))
+    DPC_ATR_MIN_RATIO = float(os.getenv('DPC_ATR_MIN_RATIO', '1.1'))
+
+    DPC_ENABLE_CHOP_FILTER = os.getenv('DPC_ENABLE_CHOP_FILTER', 'true').lower() == 'true'
+    DPC_CHOP_LOOKBACK = int(os.getenv('DPC_CHOP_LOOKBACK', '30'))
+    DPC_MAX_EMA20_CROSSES = int(os.getenv('DPC_MAX_EMA20_CROSSES', '2'))
+
+    DPC_ENABLE_TIME_FILTER = os.getenv('DPC_ENABLE_TIME_FILTER', 'true').lower() == 'true'
+    DPC_START_HOUR = int(os.getenv('DPC_START_HOUR', '7'))
+    DPC_END_HOUR = int(os.getenv('DPC_END_HOUR', '20'))
+
+    # DPC Pullback Detection
+    DPC_MIN_PULLBACK_CANDLES = int(os.getenv('DPC_MIN_PULLBACK_CANDLES', '3'))
+    DPC_SWING_LOOKBACK = int(os.getenv('DPC_SWING_LOOKBACK', '20'))
+    DPC_FIB_MIN = float(os.getenv('DPC_FIB_MIN', '0.382'))
+    DPC_FIB_MAX = float(os.getenv('DPC_FIB_MAX', '0.618'))
+    DPC_RSI_PULLBACK_MIN = int(os.getenv('DPC_RSI_PULLBACK_MIN', '45'))
+    DPC_RSI_PULLBACK_MAX = int(os.getenv('DPC_RSI_PULLBACK_MAX', '55'))
+
+    # DPC Entry Conditions
+    DPC_MUST_CLOSE_BEYOND_EMA20 = os.getenv('DPC_MUST_CLOSE_BEYOND_EMA20', 'true').lower() == 'true'
+    DPC_RSI_LONG_ENTRY_MIN = int(os.getenv('DPC_RSI_LONG_ENTRY_MIN', '50'))
+    DPC_RSI_LONG_ENTRY_MAX = int(os.getenv('DPC_RSI_LONG_ENTRY_MAX', '55'))
+    DPC_RSI_SHORT_ENTRY_MIN = int(os.getenv('DPC_RSI_SHORT_ENTRY_MIN', '45'))
+    DPC_RSI_SHORT_ENTRY_MAX = int(os.getenv('DPC_RSI_SHORT_ENTRY_MAX', '50'))
+    DPC_VOL_SPIKE_MULT = float(os.getenv('DPC_VOL_SPIKE_MULT', '1.8'))
+    DPC_VOL_PERIOD = int(os.getenv('DPC_VOL_PERIOD', '10'))
+    DPC_MAX_WICK_RATIO = float(os.getenv('DPC_MAX_WICK_RATIO', '0.30'))
+    DPC_ENABLE_MTF = os.getenv('DPC_ENABLE_MTF', 'true').lower() == 'true'
+
+    # DPC Position Sizing
+    DPC_ENABLE_DYNAMIC_SIZING = os.getenv('DPC_ENABLE_DYNAMIC_SIZING', 'true').lower() == 'true'
+    DPC_BASE_MARGIN_PCT = float(os.getenv('DPC_BASE_MARGIN_PCT', '0.15'))
+    DPC_HIGH_VOL_ATR_RATIO = float(os.getenv('DPC_HIGH_VOL_ATR_RATIO', '1.5'))
+    DPC_HIGH_VOL_MARGIN_PCT = float(os.getenv('DPC_HIGH_VOL_MARGIN_PCT', '0.10'))
+    DPC_LOW_VOL_ATR_RATIO = float(os.getenv('DPC_LOW_VOL_ATR_RATIO', '1.0'))
+    DPC_LOW_VOL_MARGIN_PCT = float(os.getenv('DPC_LOW_VOL_MARGIN_PCT', '0.20'))
+
+    # DPC Exit Logic
+    DPC_SL_TYPE = os.getenv('DPC_SL_TYPE', 'swing')
+    DPC_SWING_SL_BUFFER = float(os.getenv('DPC_SWING_SL_BUFFER', '0.002'))
+    DPC_FIXED_SL_PCT = float(os.getenv('DPC_FIXED_SL_PCT', '0.025'))
+    DPC_ADJUST_SL_BY_ATR = os.getenv('DPC_ADJUST_SL_BY_ATR', 'true').lower() == 'true'
+    DPC_HIGH_VOL_SL_MULT = float(os.getenv('DPC_HIGH_VOL_SL_MULT', '1.3'))
+    DPC_LOW_VOL_SL_MULT = float(os.getenv('DPC_LOW_VOL_SL_MULT', '0.8'))
+    DPC_ENABLE_BREAKEVEN_MOVE = os.getenv('DPC_ENABLE_BREAKEVEN_MOVE', 'true').lower() == 'true'
+    DPC_BE_RSI_LONG = int(os.getenv('DPC_BE_RSI_LONG', '70'))
+    DPC_BE_RSI_SHORT = int(os.getenv('DPC_BE_RSI_SHORT', '30'))
+    DPC_BE_BUFFER = float(os.getenv('DPC_BE_BUFFER', '0.005'))
+
+    # DPC Momentum Exit
+    DPC_EXIT_ON_RSI_REVERSAL = os.getenv('DPC_EXIT_ON_RSI_REVERSAL', 'true').lower() == 'true'
+    DPC_EXIT_ON_VOL_FADE = os.getenv('DPC_EXIT_ON_VOL_FADE', 'true').lower() == 'true'
+    DPC_VOL_FADE_CANDLES = int(os.getenv('DPC_VOL_FADE_CANDLES', '2'))
+    DPC_VOL_FADE_RATIO = float(os.getenv('DPC_VOL_FADE_RATIO', '0.60'))
+    DPC_EXIT_ON_EMA_CROSS = os.getenv('DPC_EXIT_ON_EMA_CROSS', 'true').lower() == 'true'
+
     # Timeframes
     PRIMARY_TIMEFRAME = os.getenv('PRIMARY_TIMEFRAME', '1m')
     CONFIRMATION_TIMEFRAME = os.getenv('CONFIRMATION_TIMEFRAME', '5m')
