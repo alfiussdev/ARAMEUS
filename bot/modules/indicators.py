@@ -445,3 +445,262 @@ class IndicatorEngine:
         elif timeframe == '5m':
             return len(self.candle_5m_buffer.get(pair, []))
         return 0
+
+    # ========================================================================
+    # VRR-SPECIFIC INDICATORS
+    # ========================================================================
+
+    def calculate_wick_ratio(self, candle: Dict[str, Any], direction: str = 'auto') -> Dict[str, float]:
+        """
+        Calculate wick ratios for a candle (VRR indicator)
+
+        Args:
+            candle: Candle dictionary with open, high, low, close
+            direction: 'bullish', 'bearish', or 'auto'
+
+        Returns:
+            dict: {
+                'upper_wick_ratio': Upper wick / Total range,
+                'lower_wick_ratio': Lower wick / Total range,
+                'body_ratio': Body / Total range,
+                'total_range': High - Low,
+                'is_reversal': bool (strong wick >= 40%)
+            }
+        """
+        high = candle['high']
+        low = candle['low']
+        open_price = candle['open']
+        close_price = candle['close']
+
+        total_range = high - low
+        if total_range == 0:
+            return {
+                'upper_wick_ratio': 0,
+                'lower_wick_ratio': 0,
+                'body_ratio': 0,
+                'total_range': 0,
+                'is_reversal': False
+            }
+
+        # Calculate body
+        body_top = max(open_price, close_price)
+        body_bottom = min(open_price, close_price)
+        body_size = abs(close_price - open_price)
+
+        # Calculate wicks
+        upper_wick = high - body_top
+        lower_wick = body_bottom - low
+
+        # Ratios
+        upper_wick_ratio = upper_wick / total_range
+        lower_wick_ratio = lower_wick / total_range
+        body_ratio = body_size / total_range
+
+        # Determine if it's a reversal candle
+        is_bullish_reversal = lower_wick_ratio >= self.config.VRR_MIN_WICK_RATIO and close_price > open_price
+        is_bearish_reversal = upper_wick_ratio >= self.config.VRR_MIN_WICK_RATIO and close_price < open_price
+
+        if direction == 'auto':
+            is_reversal = is_bullish_reversal or is_bearish_reversal
+        elif direction == 'bullish':
+            is_reversal = is_bullish_reversal
+        else:  # bearish
+            is_reversal = is_bearish_reversal
+
+        return {
+            'upper_wick_ratio': upper_wick_ratio,
+            'lower_wick_ratio': lower_wick_ratio,
+            'body_ratio': body_ratio,
+            'total_range': total_range,
+            'is_reversal': is_reversal,
+            'is_strong_reversal': max(upper_wick_ratio, lower_wick_ratio) >= self.config.VRR_STRONG_WICK_RATIO
+        }
+
+    def calculate_directional_movement(self, candles: List[Dict[str, Any]],
+                                      period: int, atr_multiplier: float) -> Dict[str, Any]:
+        """
+        Calculate directional movement over last N candles (VRR indicator)
+
+        Args:
+            candles: List of candle dictionaries
+            period: Number of candles to check
+            atr_multiplier: Minimum ATR multiplier required
+
+        Returns:
+            dict: {
+                'direction': 'up', 'down', or 'none',
+                'movement_size': Absolute price movement,
+                'atr_multiple': Movement / ATR,
+                'passes_filter': bool
+            }
+        """
+        if len(candles) < period + 14:  # Need ATR period as well
+            return {
+                'direction': 'none',
+                'movement_size': 0,
+                'atr_multiple': 0,
+                'passes_filter': False
+            }
+
+        # Get price movement over last N candles
+        start_close = candles[-period - 1]['close']
+        end_close = candles[-1]['close']
+        movement = end_close - start_close
+        movement_size = abs(movement)
+
+        # Calculate ATR for reference
+        atr = self.calculate_atr(candles, 14)
+        if np.isnan(atr) or atr == 0:
+            return {
+                'direction': 'none',
+                'movement_size': movement_size,
+                'atr_multiple': 0,
+                'passes_filter': False
+            }
+
+        atr_multiple = movement_size / atr
+
+        # Determine direction
+        if movement > 0:
+            direction = 'up'
+        elif movement < 0:
+            direction = 'down'
+        else:
+            direction = 'none'
+
+        passes_filter = atr_multiple >= atr_multiplier
+
+        return {
+            'direction': direction,
+            'movement_size': movement_size,
+            'atr_multiple': atr_multiple,
+            'passes_filter': passes_filter
+        }
+
+    def calculate_volume_divergence(self, candles: List[Dict[str, Any]],
+                                   lookback: int = 3) -> Dict[str, Any]:
+        """
+        Detect volume divergence (declining volume on directional move)
+
+        Args:
+            candles: List of candle dictionaries
+            lookback: Number of candles to analyze
+
+        Returns:
+            dict: {
+                'has_divergence': bool,
+                'volume_trend': 'declining', 'rising', or 'flat',
+                'price_trend': 'up', 'down', or 'flat',
+                'divergence_strength': 0-1 score
+            }
+        """
+        if len(candles) < lookback:
+            return {
+                'has_divergence': False,
+                'volume_trend': 'flat',
+                'price_trend': 'flat',
+                'divergence_strength': 0
+            }
+
+        # Get last N candles
+        recent_candles = candles[-lookback:]
+
+        # Analyze volume trend
+        volumes = [c['volume'] for c in recent_candles]
+        volume_increasing = all(volumes[i] <= volumes[i+1] for i in range(len(volumes)-1))
+        volume_decreasing = all(volumes[i] >= volumes[i+1] for i in range(len(volumes)-1))
+
+        if volume_decreasing:
+            volume_trend = 'declining'
+        elif volume_increasing:
+            volume_trend = 'rising'
+        else:
+            volume_trend = 'flat'
+
+        # Analyze price trend
+        closes = [c['close'] for c in recent_candles]
+        price_increasing = all(closes[i] <= closes[i+1] for i in range(len(closes)-1))
+        price_decreasing = all(closes[i] >= closes[i+1] for i in range(len(closes)-1))
+
+        if price_increasing:
+            price_trend = 'up'
+        elif price_decreasing:
+            price_trend = 'down'
+        else:
+            price_trend = 'flat'
+
+        # Divergence exists when price trending but volume declining
+        has_divergence = (price_trend in ['up', 'down']) and (volume_trend == 'declining')
+
+        # Calculate divergence strength (0-1)
+        if has_divergence:
+            # Measure how much volume declined relative to first candle
+            volume_ratio = volumes[-1] / volumes[0] if volumes[0] > 0 else 1.0
+            divergence_strength = max(0, min(1, 1 - volume_ratio))
+        else:
+            divergence_strength = 0
+
+        return {
+            'has_divergence': has_divergence,
+            'volume_trend': volume_trend,
+            'price_trend': price_trend,
+            'divergence_strength': divergence_strength
+        }
+
+    def find_swing_points(self, candles: List[Dict[str, Any]],
+                         lookback: int = 20) -> Dict[str, Any]:
+        """
+        Find recent swing highs and lows (liquidity zones)
+
+        Args:
+            candles: List of candle dictionaries
+            lookback: Number of candles to search
+
+        Returns:
+            dict: {
+                'swing_high': Price level,
+                'swing_low': Price level,
+                'distance_to_high': % distance,
+                'distance_to_low': % distance,
+                'near_liquidity_zone': bool (within 1% of swing point)
+            }
+        """
+        if len(candles) < lookback:
+            return {
+                'swing_high': np.nan,
+                'swing_low': np.nan,
+                'distance_to_high': np.nan,
+                'distance_to_low': np.nan,
+                'near_liquidity_zone': False
+            }
+
+        # Get recent candles
+        recent_candles = candles[-lookback:]
+        current_price = candles[-1]['close']
+
+        # Find swing high (highest high)
+        swing_high = max(c['high'] for c in recent_candles)
+
+        # Find swing low (lowest low)
+        swing_low = min(c['low'] for c in recent_candles)
+
+        # Calculate distances
+        if current_price > 0:
+            distance_to_high = ((swing_high - current_price) / current_price) * 100
+            distance_to_low = ((current_price - swing_low) / current_price) * 100
+        else:
+            distance_to_high = np.nan
+            distance_to_low = np.nan
+
+        # Check if near liquidity zone (within 1%)
+        near_high = abs(distance_to_high) <= 1.0 if not np.isnan(distance_to_high) else False
+        near_low = abs(distance_to_low) <= 1.0 if not np.isnan(distance_to_low) else False
+        near_liquidity_zone = near_high or near_low
+
+        return {
+            'swing_high': swing_high,
+            'swing_low': swing_low,
+            'distance_to_high': distance_to_high,
+            'distance_to_low': distance_to_low,
+            'near_liquidity_zone': near_liquidity_zone
+        }

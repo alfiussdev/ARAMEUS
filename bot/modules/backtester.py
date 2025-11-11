@@ -12,6 +12,7 @@ from collections import deque
 from bot.config import Config
 from bot.modules.indicators import IndicatorEngine
 from bot.modules.signal_engine import SignalEngine, SignalType
+from bot.modules.signal_engine_vrr import VRRSignalEngine
 from bot.modules.risk_manager import RiskManager
 from bot.modules.risk_controls import RiskControls
 from bot.modules.performance_metrics import PerformanceMetrics
@@ -38,7 +39,16 @@ class Backtester:
 
         # Initialize modules with mock logger
         self.indicator_engine = IndicatorEngine(config)
-        self.signal_engine = SignalEngine(config, mock_logger)
+
+        # Initialize signal engine based on strategy type
+        self.strategy_type = getattr(config, 'STRATEGY_TYPE', 'PULLBACK')
+        if self.strategy_type == 'VRR':
+            self.signal_engine = VRRSignalEngine(config, mock_logger, self.indicator_engine)
+            self.is_vrr_strategy = True
+        else:
+            self.signal_engine = SignalEngine(config, mock_logger)
+            self.is_vrr_strategy = False
+
         self.risk_manager = RiskManager(config, mock_logger)
         self.risk_controls = RiskControls(config, mock_logger, backtest_mode=True)
 
@@ -65,9 +75,10 @@ class Backtester:
         Returns:
             Dictionary with backtest results
         """
+        strategy_name = "VRR (Volatility Rejection Reversal)" if self.is_vrr_strategy else "Pullback Strategy"
         print(f"\n{'='*70}")
         print(f"  BACKTESTING {pair}")
-        print(f"  StrategyEngine: AggressiveCompoundBot v1.2 loaded for {pair} backtest")
+        print(f"  Strategy: {strategy_name}")
         print(f"  Period: {data_1m['timestamp'].min()} to {data_1m['timestamp'].max()}")
         print(f"  Candles: {len(data_1m)}")
         print(f"  Initial Equity: ${self.initial_equity:,.2f}")
@@ -188,10 +199,20 @@ class Backtester:
         }
 
         # Evaluate signal with debug mode
-        signal, confidence, filters = self.signal_engine.evaluate_signal(
-            pair, indicators, orderbook, enable_debug=enable_debug,
-            candle_num=candle_num, timestamp=current_time
-        )
+        if self.is_vrr_strategy:
+            # VRR strategy needs the full candle list for pattern recognition
+            candles = self.indicator_engine.candle_buffer.get(pair, [])
+            signal, confidence, filters = self.signal_engine.evaluate_signal(
+                pair, indicators, orderbook, candles,
+                enable_debug=enable_debug,
+                candle_num=candle_num, timestamp=current_time
+            )
+        else:
+            # Pullback strategy uses only indicators
+            signal, confidence, filters = self.signal_engine.evaluate_signal(
+                pair, indicators, orderbook, enable_debug=enable_debug,
+                candle_num=candle_num, timestamp=current_time
+            )
 
         if signal != SignalType.NO_TRADE:
             # Calculate position parameters

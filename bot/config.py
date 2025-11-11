@@ -86,6 +86,90 @@ class Config:
     # 5-minute timeframe periods (for multi-timeframe analysis)
     EMA20_5M_PERIOD = 20  # EMA on 5-minute candles
 
+    # ========================================================================
+    # VRR STRATEGY CONFIGURATION (Volatility Rejection Reversal)
+    # ========================================================================
+
+    # Strategy Selection
+    STRATEGY_TYPE = os.getenv('STRATEGY_TYPE', 'PULLBACK').upper()  # VRR or PULLBACK
+
+    # VRR Entry Conditions
+    VRR_DIRECTION_PERIOD = int(os.getenv('VRR_DIRECTION_PERIOD', '5'))
+    VRR_DIRECTION_ATR_MULT = float(os.getenv('VRR_DIRECTION_ATR_MULT', '1.8'))
+    RSI_EXTREME_LONG = int(os.getenv('RSI_EXTREME_LONG', '20'))
+    RSI_EXTREME_SHORT = int(os.getenv('RSI_EXTREME_SHORT', '80'))
+
+    # VRR Volume Filters
+    VRR_VOL_SPIKE_MULT = float(os.getenv('VRR_VOL_SPIKE_MULT', '4.0'))
+    VRR_VOL_PERIOD = int(os.getenv('VRR_VOL_PERIOD', '20'))
+    VRR_VOL_CONFIRMATION_PERIOD = int(os.getenv('VRR_VOL_CONFIRMATION_PERIOD', '10'))
+
+    # VRR Candle Structure
+    VRR_MIN_WICK_RATIO = float(os.getenv('VRR_MIN_WICK_RATIO', '0.40'))
+    VRR_STRONG_WICK_RATIO = float(os.getenv('VRR_STRONG_WICK_RATIO', '0.70'))
+    VRR_MIN_BODY_RATIO = float(os.getenv('VRR_MIN_BODY_RATIO', '0.20'))
+
+    # VRR Volume Divergence
+    VRR_ENABLE_VOL_DIVERGENCE = os.getenv('VRR_ENABLE_VOL_DIVERGENCE', 'true').lower() == 'true'
+    VRR_DIVERGENCE_LOOKBACK = int(os.getenv('VRR_DIVERGENCE_LOOKBACK', '3'))
+
+    # VRR Market Regime Filters
+    VRR_ENABLE_VOL_FILTER = os.getenv('VRR_ENABLE_VOL_FILTER', 'true').lower() == 'true'
+    VRR_ATR_CURRENT_PERIOD = int(os.getenv('VRR_ATR_CURRENT_PERIOD', '14'))
+    VRR_ATR_BASELINE_PERIOD = int(os.getenv('VRR_ATR_BASELINE_PERIOD', '50'))
+    VRR_ATR_MIN_RATIO = float(os.getenv('VRR_ATR_MIN_RATIO', '1.2'))
+
+    VRR_ENABLE_TREND_FILTER = os.getenv('VRR_ENABLE_TREND_FILTER', 'true').lower() == 'true'
+    VRR_EMA_FAST = int(os.getenv('VRR_EMA_FAST', '20'))
+    VRR_EMA_SLOW = int(os.getenv('VRR_EMA_SLOW', '50'))
+    VRR_MIN_EMA_SEPARATION = float(os.getenv('VRR_MIN_EMA_SEPARATION', '0.003'))
+
+    VRR_ENABLE_TIME_FILTER = os.getenv('VRR_ENABLE_TIME_FILTER', 'true').lower() == 'true'
+    VRR_START_HOUR = int(os.getenv('VRR_START_HOUR', '12'))
+    VRR_END_HOUR = int(os.getenv('VRR_END_HOUR', '22'))
+
+    # VRR Multi-Timeframe Confirmation
+    VRR_ENABLE_MTF = os.getenv('VRR_ENABLE_MTF', 'true').lower() == 'true'
+    VRR_CONFIRMATION_TIMEFRAME = os.getenv('VRR_CONFIRMATION_TIMEFRAME', '5m')
+    VRR_MTF_RSI_LONG = int(os.getenv('VRR_MTF_RSI_LONG', '30'))
+    VRR_MTF_RSI_SHORT = int(os.getenv('VRR_MTF_RSI_SHORT', '70'))
+
+    # VRR Structural Validation
+    VRR_ENABLE_STRUCTURE_CHECK = os.getenv('VRR_ENABLE_STRUCTURE_CHECK', 'true').lower() == 'true'
+    VRR_MUST_CLOSE_IN_PREV_RANGE = os.getenv('VRR_MUST_CLOSE_IN_PREV_RANGE', 'true').lower() == 'true'
+    VRR_CHECK_LIQUIDITY_ZONE = os.getenv('VRR_CHECK_LIQUIDITY_ZONE', 'true').lower() == 'true'
+    VRR_LIQUIDITY_LOOKBACK = int(os.getenv('VRR_LIQUIDITY_LOOKBACK', '20'))
+
+    # VRR Adaptive Exit
+    TP2_RATIO = float(os.getenv('TP2_RATIO', '3.0'))
+    VRR_EXIT_ON_VOLUME_DROP = os.getenv('VRR_EXIT_ON_VOLUME_DROP', 'true').lower() == 'true'
+    VRR_EXIT_ON_RSI_NEUTRAL = os.getenv('VRR_EXIT_ON_RSI_NEUTRAL', 'true').lower() == 'true'
+    VRR_EXIT_ON_COUNTER_CANDLE = os.getenv('VRR_EXIT_ON_COUNTER_CANDLE', 'true').lower() == 'true'
+
+    # VRR Dynamic Position Sizing
+    VRR_ENABLE_DYNAMIC_SIZE = os.getenv('VRR_ENABLE_DYNAMIC_SIZE', 'true').lower() == 'true'
+    VRR_FULL_SIZE_RSI_LONG = int(os.getenv('VRR_FULL_SIZE_RSI_LONG', '20'))
+    VRR_FULL_SIZE_RSI_SHORT = int(os.getenv('VRR_FULL_SIZE_RSI_SHORT', '80'))
+    VRR_FULL_SIZE_REQUIRES_DIVERGENCE = os.getenv('VRR_FULL_SIZE_REQUIRES_DIVERGENCE', 'true').lower() == 'true'
+    VRR_HALF_SIZE_RSI_RANGE_LOW = int(os.getenv('VRR_HALF_SIZE_RSI_RANGE_LOW', '70'))
+    VRR_HALF_SIZE_RSI_RANGE_HIGH = int(os.getenv('VRR_HALF_SIZE_RSI_RANGE_HIGH', '75'))
+    VRR_MTF_SIZE_MULTIPLIER = float(os.getenv('VRR_MTF_SIZE_MULTIPLIER', '1.2'))
+
+    # VRR Fail-Safe Conditions
+    VRR_MAX_CANDLES_WAIT = int(os.getenv('VRR_MAX_CANDLES_WAIT', '3'))
+    VRR_CANCEL_ON_VWAP_CROSS = os.getenv('VRR_CANCEL_ON_VWAP_CROSS', 'true').lower() == 'true'
+    VRR_CANCEL_ON_NEW_EXPANSION = os.getenv('VRR_CANCEL_ON_NEW_EXPANSION', 'true').lower() == 'true'
+
+    # Timeframes
+    PRIMARY_TIMEFRAME = os.getenv('PRIMARY_TIMEFRAME', '1m')
+    CONFIRMATION_TIMEFRAME = os.getenv('CONFIRMATION_TIMEFRAME', '5m')
+
+    # Position Management (used by both strategies)
+    TP1_CLOSE_PCT = float(os.getenv('TP1_CLOSE_PCT', '0.50'))
+    ENABLE_TRAILING_STOP = os.getenv('ENABLE_TRAILING_STOP', 'true').lower() == 'true'
+    TRAILING_STOP_ACTIVATION = float(os.getenv('TRAILING_STOP_ACTIVATION', '2.0'))
+    TRAILING_STOP_DISTANCE = float(os.getenv('TRAILING_STOP_DISTANCE', '0.5'))
+
     # Execution Settings
     ORDER_TIMEOUT_SECONDS = int(os.getenv('ORDER_TIMEOUT_SECONDS', '30'))
     MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))
