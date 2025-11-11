@@ -159,6 +159,38 @@ class SignalEngine:
         # 7. Spread filter (liquidity)
         filters['spread_ok'] = orderbook['spread'] <= self.config.MAX_SPREAD
 
+        # 8. Market Regime Filter (prevent trading in ranging/low volatility markets)
+        regime_ok = True
+        regime_details = []
+
+        if self.config.ENABLE_REGIME_FILTER:
+            # Check ATR ratio: ATR_short / ATR_long >= threshold
+            if 'regime_atr_ratio' in indicators and indicators['regime_atr_ratio'] is not None:
+                import numpy as np
+                if not np.isnan(indicators['regime_atr_ratio']):
+                    atr_ratio_ok = indicators['regime_atr_ratio'] >= self.config.ATR_RATIO_THRESHOLD
+                    regime_ok = regime_ok and atr_ratio_ok
+                    regime_details.append(f"ATR_ratio={indicators['regime_atr_ratio']:.3f}")
+                else:
+                    regime_ok = False
+            else:
+                regime_ok = False
+
+        if self.config.ENABLE_ADX_FILTER:
+            # Check ADX: ADX >= threshold (trending market)
+            if 'adx' in indicators and indicators['adx'] is not None:
+                import numpy as np
+                if not np.isnan(indicators['adx']):
+                    adx_ok = indicators['adx'] >= self.config.ADX_THRESHOLD
+                    regime_ok = regime_ok and adx_ok
+                    regime_details.append(f"ADX={indicators['adx']:.1f}")
+                else:
+                    regime_ok = False
+            else:
+                regime_ok = False
+
+        filters['regime_ok'] = regime_ok
+
         # Calculate confidence based on how many filters passed
         filters_passed = sum(filters.values())
         total_filters = len(filters)
@@ -170,11 +202,13 @@ class SignalEngine:
         # Debug logging
         if enable_debug:
             decision = "should_enter_long" if signal_valid else "no_trade"
+            regime_str = ' | '.join(regime_details) if regime_details else "regime_disabled"
             print(f"[{candle_num}] {timestamp} | {decision} | "
                   f"trend_ok={filters['trend_ok']} | momentum_ok={filters['momentum_ok']} | "
                   f"vwap_ok={filters['vwap_ok']} | rsi_ok={filters['rsi_ok']} (RSI={indicators['rsi']:.1f}) | "
                   f"volume_ok={filters['volume_ok']} (ratio={vol_ratio_20:.2f}) | "
                   f"context_5m_ok={filters['context_5m_ok']} | spread_ok={filters['spread_ok']} (spread={orderbook['spread']:.4f}) | "
+                  f"regime_ok={filters['regime_ok']} ({regime_str}) | "
                   f"risk_limits_ok=True")
 
         # Also log to logger for rejected signals (non-debug mode)
@@ -255,6 +289,38 @@ class SignalEngine:
         # 7. Spread filter (liquidity)
         filters['spread_ok'] = orderbook['spread'] <= self.config.MAX_SPREAD
 
+        # 8. Market Regime Filter (prevent trading in ranging/low volatility markets)
+        regime_ok = True
+        regime_details = []
+
+        if self.config.ENABLE_REGIME_FILTER:
+            # Check ATR ratio: ATR_short / ATR_long >= threshold
+            if 'regime_atr_ratio' in indicators and indicators['regime_atr_ratio'] is not None:
+                import numpy as np
+                if not np.isnan(indicators['regime_atr_ratio']):
+                    atr_ratio_ok = indicators['regime_atr_ratio'] >= self.config.ATR_RATIO_THRESHOLD
+                    regime_ok = regime_ok and atr_ratio_ok
+                    regime_details.append(f"ATR_ratio={indicators['regime_atr_ratio']:.3f}")
+                else:
+                    regime_ok = False
+            else:
+                regime_ok = False
+
+        if self.config.ENABLE_ADX_FILTER:
+            # Check ADX: ADX >= threshold (trending market)
+            if 'adx' in indicators and indicators['adx'] is not None:
+                import numpy as np
+                if not np.isnan(indicators['adx']):
+                    adx_ok = indicators['adx'] >= self.config.ADX_THRESHOLD
+                    regime_ok = regime_ok and adx_ok
+                    regime_details.append(f"ADX={indicators['adx']:.1f}")
+                else:
+                    regime_ok = False
+            else:
+                regime_ok = False
+
+        filters['regime_ok'] = regime_ok
+
         # Calculate confidence based on how many filters passed
         filters_passed = sum(filters.values())
         total_filters = len(filters)
@@ -266,11 +332,13 @@ class SignalEngine:
         # Debug logging
         if enable_debug:
             decision = "should_enter_short" if signal_valid else "no_trade"
+            regime_str = ' | '.join(regime_details) if regime_details else "regime_disabled"
             print(f"[{candle_num}] {timestamp} | {decision} | "
                   f"trend_ok={filters['trend_ok']} | momentum_ok={filters['momentum_ok']} | "
                   f"vwap_ok={filters['vwap_ok']} | rsi_ok={filters['rsi_ok']} (RSI={indicators['rsi']:.1f}) | "
                   f"volume_ok={filters['volume_ok']} (ratio={vol_ratio_20:.2f}) | "
                   f"context_5m_ok={filters['context_5m_ok']} | spread_ok={filters['spread_ok']} (spread={orderbook['spread']:.4f}) | "
+                  f"regime_ok={filters['regime_ok']} ({regime_str}) | "
                   f"risk_limits_ok=True")
 
         # Also log to logger for rejected signals (non-debug mode)

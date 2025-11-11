@@ -74,6 +74,15 @@ class Config:
     VOL_MEAN_PERIOD_20 = int(os.getenv('VOL_MEAN_PERIOD_20', '20'))
     VOL_MEAN_PERIOD_3 = int(os.getenv('VOL_MEAN_PERIOD_3', '3'))
 
+    # Market Regime Filter (NEW - filters out ranging/low volatility markets)
+    ENABLE_REGIME_FILTER = os.getenv('ENABLE_REGIME_FILTER', 'false').lower() == 'true'
+    ATR_SHORT_PERIOD = int(os.getenv('ATR_SHORT_PERIOD', '20'))  # Short ATR for regime
+    ATR_LONG_PERIOD = int(os.getenv('ATR_LONG_PERIOD', '100'))   # Long ATR for regime
+    ATR_RATIO_THRESHOLD = float(os.getenv('ATR_RATIO_THRESHOLD', '0.8'))  # Min ATR_short/ATR_long
+    ENABLE_ADX_FILTER = os.getenv('ENABLE_ADX_FILTER', 'false').lower() == 'true'
+    ADX_PERIOD = int(os.getenv('ADX_PERIOD', '14'))
+    ADX_THRESHOLD = float(os.getenv('ADX_THRESHOLD', '20'))  # Min ADX for trending market
+
     # 5-minute timeframe periods (for multi-timeframe analysis)
     EMA20_5M_PERIOD = 20  # EMA on 5-minute candles
 

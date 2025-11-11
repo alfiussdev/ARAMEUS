@@ -182,6 +182,103 @@ class IndicatorEngine:
         # Return average of last 'period' true ranges
         return np.mean(true_ranges[-period:])
 
+    def calculate_adx(self, candles: List[Dict[str, Any]], period: int = 14) -> float:
+        """
+        Calculate Average Directional Index (ADX)
+        ADX measures trend strength (0-100), regardless of direction
+        Values > 25 indicate trending market, < 20 indicate ranging market
+
+        Args:
+            candles: List of candle dictionaries
+            period: Period for ADX calculation (typically 14)
+
+        Returns:
+            float: ADX value (0-100)
+        """
+        if len(candles) < period * 2:
+            return np.nan
+
+        # Calculate +DM and -DM
+        plus_dm = []
+        minus_dm = []
+        true_ranges = []
+
+        for i in range(1, len(candles)):
+            high = candles[i]['high']
+            low = candles[i]['low']
+            prev_high = candles[i - 1]['high']
+            prev_low = candles[i - 1]['low']
+            prev_close = candles[i - 1]['close']
+
+            # Directional movement
+            high_diff = high - prev_high
+            low_diff = prev_low - low
+
+            # +DM: upward movement
+            if high_diff > low_diff and high_diff > 0:
+                plus_dm.append(high_diff)
+            else:
+                plus_dm.append(0)
+
+            # -DM: downward movement
+            if low_diff > high_diff and low_diff > 0:
+                minus_dm.append(low_diff)
+            else:
+                minus_dm.append(0)
+
+            # True Range
+            tr = max(
+                high - low,
+                abs(high - prev_close),
+                abs(low - prev_close)
+            )
+            true_ranges.append(tr)
+
+        # Convert to numpy arrays
+        plus_dm = np.array(plus_dm)
+        minus_dm = np.array(minus_dm)
+        true_ranges = np.array(true_ranges)
+
+        # Smooth using exponential moving average (Wilder's smoothing)
+        # First value is simple average
+        plus_di_values = []
+        minus_di_values = []
+
+        for i in range(period - 1, len(plus_dm)):
+            atr_val = np.mean(true_ranges[i - period + 1:i + 1])
+            plus_dm_smooth = np.mean(plus_dm[i - period + 1:i + 1])
+            minus_dm_smooth = np.mean(minus_dm[i - period + 1:i + 1])
+
+            if atr_val > 0:
+                plus_di = 100 * (plus_dm_smooth / atr_val)
+                minus_di = 100 * (minus_dm_smooth / atr_val)
+                plus_di_values.append(plus_di)
+                minus_di_values.append(minus_di)
+            else:
+                plus_di_values.append(0)
+                minus_di_values.append(0)
+
+        if not plus_di_values:
+            return np.nan
+
+        # Calculate DX (Directional Index)
+        dx_values = []
+        for plus_di, minus_di in zip(plus_di_values, minus_di_values):
+            di_sum = plus_di + minus_di
+            if di_sum > 0:
+                dx = 100 * abs(plus_di - minus_di) / di_sum
+                dx_values.append(dx)
+            else:
+                dx_values.append(0)
+
+        if len(dx_values) < period:
+            return np.nan
+
+        # ADX is smoothed average of DX
+        adx = np.mean(dx_values[-period:])
+
+        return adx
+
     def calculate_all_indicators(self, pair: str) -> Optional[Dict[str, Any]]:
         """
         Calculate all indicators for a trading pair
@@ -233,6 +330,25 @@ class IndicatorEngine:
         vol_ratio = atr_current / atr_mean if atr_mean > 0 else 1.0
         vol_ratio = np.clip(vol_ratio, self.config.VOL_RATIO_MIN, self.config.VOL_RATIO_MAX)
 
+        # Market Regime Filter: Calculate ATR for regime detection
+        atr_short = np.nan
+        atr_long = np.nan
+        regime_atr_ratio = np.nan
+        adx = np.nan
+
+        if self.config.ENABLE_REGIME_FILTER:
+            # Calculate ATR_20 and ATR_100 for regime detection
+            atr_short = self.calculate_atr(candles, self.config.ATR_SHORT_PERIOD)
+            atr_long = self.calculate_atr(candles, self.config.ATR_LONG_PERIOD)
+
+            # Calculate regime ratio
+            if not np.isnan(atr_short) and not np.isnan(atr_long) and atr_long > 0:
+                regime_atr_ratio = atr_short / atr_long
+
+        if self.config.ENABLE_ADX_FILTER:
+            # Calculate ADX for trend strength
+            adx = self.calculate_adx(candles, self.config.ADX_PERIOD)
+
         # Volume calculations
         volumes = np.array([c['volume'] for c in candles])
         vol_current = volumes[-1]
@@ -279,6 +395,12 @@ class IndicatorEngine:
             'atr_current': atr_current,
             'atr_mean': atr_mean,
             'volatility_ratio': vol_ratio,
+
+            # Market Regime Filter
+            'atr_short': atr_short,
+            'atr_long': atr_long,
+            'regime_atr_ratio': regime_atr_ratio,
+            'adx': adx,
 
             # Volume
             'volume_current': vol_current,
